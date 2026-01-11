@@ -1,0 +1,160 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// MODELS
+
+model User {
+  user_id       String   @id @db.VarChar(10)
+  username      String   @unique @db.VarChar(50)
+  email         String   @unique @db.VarChar(100)
+  password      String   @db.VarChar(255)
+  user_role     String   @default("MEMBER") @db.VarChar(20)
+  created_at    DateTime @default(now()) @db.Timestamptz()
+  updated_at    DateTime @updatedAt @db.Timestamptz()
+
+  // Relations
+  CreatedCustomers   Customer[]     @relation("UserCreatedCustomers")
+  CreatedCustDevices Cust_Device[]  @relation("UserCreatedCustDevices")
+  UpdatedSettings    Setting[]      @relation("UserUpdatedSettings")
+  ReportedTickets    Ticket[]       @relation("UserReportedTickets")
+  AssignedTickets    Ticket[]       @relation("UserAssignedTickets")
+  TicketUpdates      Ticket_Update[] @relation("UserTicketUpdates")
+}
+
+model Setting {
+  setting_id    BigInt   @id @default(autoincrement())
+  setting_key   String   @unique @db.VarChar(50)
+  setting_value String   @db.VarChar(255)
+  description   String?  @db.Text
+  created_at    DateTime @default(now()) @db.Timestamptz()
+  updated_at    DateTime @updatedAt @db.Timestamptz()
+
+  updated_by    String   @db.VarChar(10)
+  User          User     @relation("UserUpdatedSettings", fields: [updated_by], references: [user_id])
+
+  @@map("Setting")
+}
+
+model Customer {
+  customer_id       String   @id @db.VarChar(10)
+  customer_name     String   @db.VarChar(100)
+  company_name      String?  @db.VarChar(100)
+  contact_person    String   @db.VarChar(100)
+  phone_number      String   @db.VarChar(20)
+  contact_tel       String?  @db.VarChar(20)
+  contact_email     String?  @db.VarChar(100)
+  contact_line_id   String?  @db.VarChar(50)
+  address           String?  @db.Text
+  company_address   String?  @db.Text
+  shop_name         String?  @db.VarChar(100)
+  shop_address      String?  @db.Text
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now()) @db.Timestamptz()
+  updated_at        DateTime @updatedAt @db.Timestamptz()
+
+  created_by        String   @db.VarChar(10)
+  User              User     @relation("UserCreatedCustomers", fields: [created_by], references: [user_id])
+
+  Cust_Devices      Cust_Device[]
+  Tickets           Ticket[]
+
+  @@map("Customer")
+}
+
+model DeviceType {
+  id          String   @id @default(cuid()) @db.VarChar(10)
+  device_type String   @db.VarChar(50) // e.g., "Printer", "Snooz"
+  brand       String   @db.VarChar(50)
+  model       String   @db.VarChar(100)
+  created_at  DateTime @default(now()) @db.Timestamptz()
+  updated_at  DateTime @updatedAt @db.Timestamptz()
+
+  Devices     Device[]
+  
+  @@unique([device_type, brand, model])
+  @@map("DeviceType")
+}
+
+model Device {
+  device_id             String       @id @db.VarChar(10)
+  serial_number         String?      @unique @db.VarChar(100)
+  installation_location String?      @db.VarChar(100)
+  warranty_end_date     DateTime?    @db.Date
+  created_at            DateTime     @default(now()) @db.Timestamptz()
+  updated_at            DateTime     @updatedAt @db.Timestamptz()
+
+  // ลบ field device_type, device_name เดิม
+  device_type_id        String?      @db.VarChar(10)
+  DeviceType            DeviceType?  @relation(fields: [device_type_id], references: [id])
+
+  Cust_Devices          Cust_Device[]
+  Tickets               Ticket[]
+  
+  @@map("Device")
+}
+
+model Cust_Device {
+  cust_device_id BigInt   @id @default(autoincrement())
+  start_date     DateTime @db.Date
+  end_date       DateTime? @db.Date
+  created_at     DateTime @default(now()) @db.Timestamptz()
+
+  customer_id    String   @db.VarChar(10)
+  Customer       Customer @relation(fields: [customer_id], references: [customer_id])
+
+  device_id      String   @db.VarChar(10)
+  Device         Device   @relation(fields: [device_id], references: [device_id])
+
+  created_by     String   @db.VarChar(10)
+  User           User     @relation("UserCreatedCustDevices", fields: [created_by], references: [user_id])
+
+  @@map("Cust_Device")
+}
+
+model Ticket {
+  ticket_id     String   @id @db.VarChar(15)
+  subject       String   @db.VarChar(255)
+  description   String   @db.Text
+  priority      String   @default("Medium") @db.VarChar(20)
+  status        String   @default("New") @db.VarChar(20)
+  created_at    DateTime @default(now()) @db.Timestamptz()
+  updated_at    DateTime @updatedAt @db.Timestamptz()
+
+  customer_id   String   @db.VarChar(10)
+  Customer      Customer @relation(fields: [customer_id], references: [customer_id])
+
+  device_id     String?  @db.VarChar(10)
+  Device        Device?  @relation(fields: [device_id], references: [device_id])
+
+  reporter_id   String?
+  reporter      User?    @relation("UserReportedTickets", fields: [reporter_id], references: [user_id])
+
+  assigned_to   String?
+  assignee      User?    @relation("UserAssignedTickets", fields: [assigned_to], references: [user_id])
+
+  Updates       Ticket_Update[]
+
+  @@map("Ticket")
+}
+
+model Ticket_Update {
+  update_id      BigInt   @id @default(autoincrement())
+  update_type    String   @db.VarChar(20)
+  update_detail  String?  @db.Text
+  new_status     String?  @db.VarChar(20)
+  updated_at     DateTime @default(now()) @db.Timestamptz()
+
+  ticket_id      String   @db.VarChar(15)
+  Ticket         Ticket   @relation(fields: [ticket_id], references: [ticket_id])
+
+  updated_by     String   @db.VarChar(10)
+  User           User     @relation("UserTicketUpdates", fields: [updated_by], references: [user_id])
+
+  @@map("Ticket_Update")
+}

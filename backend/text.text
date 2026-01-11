@@ -1,0 +1,18 @@
+src/
+├── auth/
+│   ├── auth.module.ts
+│   ├── auth.service.ts
+│   ├── auth.controller.ts
+├── user/
+│   ├── user.module.ts
+│   ├── user.service.ts
+│   ├── user.controller.ts
+├── repair/
+│   ├── repair.module.ts
+│   ├── repair.service.ts
+│   ├── repair.controller.ts
+├── upload/
+│   ├── upload.module.ts
+│   ├── upload.service.ts
+│   ├── upload.controller.ts
+└── app.module.ts

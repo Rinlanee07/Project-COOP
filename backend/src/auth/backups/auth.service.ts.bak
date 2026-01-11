@@ -1,0 +1,190 @@
+// src/auth/auth.service.ts
+import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import * as bcrypt from 'bcryptjs';
+import { JwtService } from '@nestjs/jwt';
+
+export interface LoginDto {
+  email: string;
+  password: string;
+}
+
+export interface RegisterDto {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+  role?: 'MEMBER' | 'ADMIN';
+  organizationName?: string;
+}
+
+export interface AuthResponse {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    phone?: string;
+    image?: string;
+    organizationId?: number;
+  };
+  token: string;
+}
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+  ) {}
+
+  // ✅ ย้าย generateUniqueCode ขึ้นมาด้านบน — ชัดเจนและปลอดภัย
+  private generateUniqueCode(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    for (let i = 0; i < 6; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
+  async login(loginDto: LoginDto): Promise<AuthResponse> {
+    const { email, password } = loginDto;
+
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const token = this.jwtService.sign({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    return {
+      user: {
+        id: String(user.id),
+        name: user.name || user.email,
+        email: user.email,
+        role: user.role,
+        phone: user.phone || undefined,
+        image: user.image || undefined,
+        organizationId: user.organizationId || undefined,
+      },
+      token,
+    };
+  }
+
+  async getProfile(userId: string): Promise<any> { {
+    const { name, email, password, phone, role = 'MEMBER', organizationName } = registerDto;
+
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    let orgId: number | undefined = undefined;
+
+    if (role === 'MEMBER') {
+      if (!organizationName) {
+        throw new ConflictException('Organization name is required for members');
+      }
+
+      // สร้างรหัสร้านไม่ซ้ำ
+      let uniqueCode: string;
+      let isUnique = false;
+      while (!isUnique) {
+        uniqueCode = this.generateUniqueCode();
+        const existingOrg = await this.prisma.organization.findUnique({
+          where: { code: uniqueCode },
+        });
+        if (!existingOrg) {
+          isUnique = true;
+        }
+      }
+
+      const org = await this.prisma.organization.create({
+         {
+          name: organizationName,
+          code: uniqueCode,
+        },
+      });
+      orgId = org.id;
+    }
+    // ถ้าเป็น ADMIN → orgId = undefined (ไม่สังกัดร้าน)
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    const user = await this.prisma.user.create({
+       {
+        name,
+        email,
+        password: hashedPassword,
+        phone,
+        role,
+        organizationId: orgId,
+      },
+    });
+
+    const token = this.jwtService.sign({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    return {
+      user: {
+        id: String(user.id),
+        name: user.name || user.email,
+        email: user.email,
+        role: user.role,
+        phone: user.phone || undefined,
+        image: user.image || undefined,
+        organizationId: user.organizationId || undefined,
+      },
+      token,
+    };
+  }
+
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: parseInt(userId, 10) },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        phone: true,
+        image: true,
+        organizationId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    return {
+      id: String(user.id),
+      name: user.name || user.email,
+      email: user.email,
+      role: user.role,
+      phone: user.phone || undefined,
+      image: user.image || undefined,
+      organizationId: user.organizationId || undefined,
+    };
+  }
