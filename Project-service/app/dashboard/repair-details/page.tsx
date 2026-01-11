@@ -1,0 +1,282 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Loader2,
+  Search,
+  Filter,
+  Printer,
+  ChevronRight,
+} from "lucide-react";
+import { repairService, type RepairListItem } from "@/services/repairService";
+
+const RepairListPage = () => {
+  const [repairs, setRepairs] = useState<RepairListItem[]>([]);
+  const [filteredRepairs, setFilteredRepairs] = useState<RepairListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  useEffect(() => {
+    const fetch = async () => {
+      try {
+        console.log("[RepairList] Fetching repairs...");
+        const res = await repairService.getAll();
+        console.log("[RepairList] Response:", res);
+        
+        if (res.success) {
+          setRepairs(res.data);
+          setFilteredRepairs(res.data);
+          console.log("[RepairList] Loaded repairs:", res.data.length);
+        } else {
+          setError(res.message || "Failed to fetch repair list");
+          console.error("[RepairList] Error:", res.message);
+        }
+      } catch (err) {
+        const errorMsg = "Failed to fetch repair list";
+        setError(errorMsg);
+        console.error("[RepairList] Exception:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetch();
+  }, []);
+
+  // Filter and search
+  useEffect(() => {
+    let filtered = [...repairs];
+
+    // Search
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (r) =>
+          r.printerModel?.toLowerCase().includes(query) ||
+          r.serialNumber?.toLowerCase().includes(query) ||
+          r.customerName?.toLowerCase().includes(query) ||
+          r.id.toString().includes(query)
+      );
+    }
+
+    // Status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((r) => r.status === statusFilter);
+    }
+
+    setFilteredRepairs(filtered);
+    console.log("[RepairList] Filtered repairs:", filtered.length);
+  }, [repairs, searchQuery, statusFilter]);
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "New":
+        return "bg-[#D7B55A] text-white";
+      case "In Progress":
+        return "bg-[#646c91] text-white";
+      case "Pending":
+        return "bg-orange-500 text-white";
+      case "Completed":
+        return "bg-[#5f512f] text-white";
+      case "Closed":
+        return "bg-[#092A6D] text-white";
+      default:
+        return "bg-[#697293] text-white";
+    }
+  };
+
+  const getPriorityColor = (priority?: string) => {
+    switch (priority) {
+      case "High":
+        return "bg-yellow-500";
+      case "Medium":
+        return "bg-blue-500";
+      case "Low":
+        return "bg-green-500";
+      default:
+        return "bg-gray-400";
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F5F7FA]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[#092A6D] mx-auto mb-4" />
+          <p className="text-[#666666]">กำลังโหลดข้อมูล...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className=" bg-[#F5F7FA] min-h-screen">
+        <Card className="bg-red-50 border-red-200 rounded-xl shadow-sm">
+          <CardContent className="py-4 text-center text-red-700">
+            {error}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F5F7FA] pt-0">
+      <div className="max-w-7xl mx-auto space-y-1">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+          </div>
+        </div>
+
+        {/* Search and Filter Bar */}
+        <Card className="bg-white border border-[#E8EBF5] rounded-xl shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              {/* Search */}
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[#666666]" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="ค้นหา... (รุ่นเครื่อง, Serial Number, ลูกค้า, ID)"
+                  className="pl-9 border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent"
+                />
+              </div>
+
+              {/* Status Filter */}
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-48 border-[#E8EBF5]">
+                  <Filter className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="สถานะ" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทั้งหมด</SelectItem>
+                  <SelectItem value="New">New</SelectItem>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="In Progress">In Progress</SelectItem>
+                  <SelectItem value="Completed">Completed</SelectItem>
+                  <SelectItem value="Closed">Closed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Repair List */}
+        {filteredRepairs.length === 0 ? (
+          <Card className="bg-white border border-[#E8EBF5] rounded-xl shadow-sm">
+            <CardContent className="py-12 text-center">
+              <p className="text-[#666666] text-lg mb-2">
+                ไม่พบข้อมูลงานซ่อม
+              </p>
+              <p className="text-[#999999] text-sm">
+                ลองเปลี่ยนคำค้นหาหรือตัวกรอง
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4">
+            {filteredRepairs.map((repair) => (
+              <Link
+                key={repair.id}
+                href={`/dashboard/repair-details/${repair.id}`}
+                className="block"
+              >
+                <Card className="bg-white border border-[#E8EBF5] rounded-xl shadow-sm hover:shadow-md transition-all hover:border-[#D7B55A]">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                      {/* Left: Main Info */}
+                      <div className="flex-1 space-y-3">
+                        <div className="flex items-start gap-3">
+                          <Badge className={getStatusColor(repair.status)}>
+                            {repair.status}
+                          </Badge>
+                          {repair.priority && (
+                            <div className="flex items-center gap-1.5">
+                              <div
+                                className={`w-2 h-2 rounded-full ${getPriorityColor(
+                                  repair.priority
+                                )}`}
+                              />
+                              <span className="text-xs text-[#666666]">
+                                {repair.priority}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <h3 className="text-lg font-semibold text-[#092A6D] mb-1">
+                            {repair.printerModel}
+                          </h3>
+                          <p className="text-sm text-[#666666]">
+                            <span className="font-medium">ลูกค้า:</span>{" "}
+                            {repair.customerName || "N/A"}
+                          </p>
+                          <p className="text-sm text-[#666666]">
+                            <span className="font-medium">Serial:</span>{" "}
+                            {repair.serialNumber || "N/A"}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-4 text-xs text-[#666666]">
+                          {repair.assignedTo && (
+                            <span>
+                              <span className="font-medium">ผู้รับผิดชอบ:</span>{" "}
+                              {repair.assignedTo}
+                            </span>
+                          )}
+                          {repair.createdAgo && (
+                            <span>
+                              <span className="font-medium">สร้างเมื่อ:</span>{" "}
+                              {repair.createdAgo}
+                            </span>
+                          )}
+                          {repair.dueIn && (
+                            <span className="text-orange-600">
+                              <span className="font-medium">ครบกำหนด:</span>{" "}
+                              {repair.dueIn}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: ID and Arrow */}
+                      <div className="flex items-center justify-between sm:flex-col sm:items-end gap-2">
+                        <div className="text-right">
+                          <p className="text-sm text-[#666666]">Ticket ID</p>
+                          <p className="text-lg font-bold text-[#092A6D]">
+                            #{repair.id}
+                          </p>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-[#666666] sm:hidden" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default RepairListPage;
