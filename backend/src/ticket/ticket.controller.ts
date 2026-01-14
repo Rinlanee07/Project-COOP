@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { TicketService } from './ticket.service';
 import type {
   CreateTicketDto,
@@ -9,7 +10,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 @Controller('tickets')
 @UseGuards(JwtAuthGuard)
 export class TicketController {
-  constructor(private readonly ticketService: TicketService) {}
+  constructor(private readonly ticketService: TicketService) { }
 
   @Get()
   async getTickets(
@@ -18,8 +19,8 @@ export class TicketController {
     @Query('endDate') endDate?: string,
   ) {
     const userId = req.user.sub;
-    const userRole = req.user.user_role;
-    
+    const userRole = req.user.role; // JWT payload uses 'role' field
+
     return this.ticketService.getTickets(userId, userRole, {
       startDate,
       endDate,
@@ -29,17 +30,22 @@ export class TicketController {
   @Get(':id')
   async getTicket(@Request() req, @Param('id') id: string) {
     const userId = req.user.sub;
-    const userRole = req.user.role;
-    
+    const userRole = req.user.role; // JWT payload uses 'role' field
+
     return this.ticketService.getTicket(id, userId, userRole);
   }
 
   @Post()
-  async createTicket(@Request() req, @Body() createDto: CreateTicketDto) {
+  @UseInterceptors(FilesInterceptor('files'))
+  async createTicket(
+    @Request() req,
+    @Body() createDto: CreateTicketDto,
+    @UploadedFiles() files: Array<Express.Multer.File>
+  ) {
     const userId = req.user.sub;
-    const userRole = req.user.role;
-    
-    return this.ticketService.createTicket(createDto, userId, userRole);
+    const userRole = req.user.role; // JWT payload uses 'role' field
+
+    return this.ticketService.createTicket(createDto, userId, userRole, files);
   }
 
   @Patch(':id/status')
@@ -49,8 +55,8 @@ export class TicketController {
     @Body() updateDto: UpdateTicketStatusDto,
   ) {
     const userId = req.user.sub;
-    const userRole = req.user.role;
-    
+    const userRole = req.user.role; // JWT payload uses 'role' field
+
     return this.ticketService.updateTicketStatus(id, updateDto, userId, userRole);
   }
 }

@@ -32,7 +32,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
-  ) {}
+  ) { }
 
   async login(loginDto: LoginDto): Promise<AuthResponse> {
     const { email, password } = loginDto;
@@ -129,6 +129,37 @@ export class AuthService {
       email: user.email,
       role: user.user_role,
       phone: null
+    };
+  }
+
+  async updateProfile(userId: string, data: { username?: string; email?: string; password?: string }) {
+    const updates: any = {};
+    if (data.username) updates.username = data.username;
+
+    if (data.email) {
+      // Check if email taken
+      const existing = await this.prisma.user.findUnique({ where: { email: data.email } });
+      if (existing && existing.user_id !== userId) {
+        throw new ConflictException('Email already in use');
+      }
+      updates.email = data.email;
+    }
+
+    if (data.password) {
+      updates.password = await bcrypt.hash(data.password, 10);
+    }
+
+    const user = await this.prisma.user.update({
+      where: { user_id: userId },
+      data: updates
+    });
+
+    return {
+      id: user.user_id,
+      name: user.username,
+      email: user.email,
+      role: user.user_role,
+      message: 'Profile updated successfully'
     };
   }
 }

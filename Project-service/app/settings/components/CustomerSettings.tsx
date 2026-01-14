@@ -3,14 +3,15 @@
 
 import { useState, useEffect, useMemo, useCallback, useId } from 'react';
 import Select from 'react-select';
-import { THAI_PROVINCES, PROVINCE_MAP } from '../../../../backend/src/lib/thaiAddresses';
+import { THAI_PROVINCES, PROVINCE_MAP } from '@/lib/thaiAddresses';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/components/ui/use-toast';
-import { Save } from 'lucide-react';
+import { Save, Plus, X } from 'lucide-react';
+import { apiClient } from '@/lib/api-client';
 
 type AddressFields = {
   houseNumber: string;
@@ -26,10 +27,16 @@ type CustomerData = {
   customer_id: string;
   customer_name: string;
   shop_name: string | null;
+  devices: Array<{
+    type: string;
+    serial: string;
+    brand: string;
+  }>;
   shop_address: AddressFields;
   company_name: string | null;
   company_address: AddressFields;
   phone_number: string;
+  contact_person: string;
   contact_email: string | null;
   contact_line_name: string | null;
 };
@@ -44,15 +51,25 @@ const emptyAddress: AddressFields = {
   isThailand: true,
 };
 
+const DEVICE_TYPE_OPTIONS = [
+  { value: 'printer', label: 'Printer' },
+  { value: 'buzzer', label: 'Buzzer' },
+  { value: 'cash_drawer', label: 'Cash Drawer' },
+];
+
 export default function CustomerSettings() {
   const [customer, setCustomer] = useState<CustomerData>({
     customer_id: '',
     customer_name: '',
     shop_name: '',
+    devices: [
+      { type: '', serial: '', brand: '' },
+    ],
     shop_address: { ...emptyAddress },
     company_name: '',
     company_address: { ...emptyAddress },
     phone_number: '',
+    contact_person: '',
     contact_email: '',
     contact_line_name: '',
   });
@@ -64,6 +81,7 @@ export default function CustomerSettings() {
   const shopDistrictSelectId = useId();
   const companyProvinceSelectId = useId();
   const companyDistrictSelectId = useId();
+  const deviceTypeSelectId = useId();
 
   const provinceOptions = useMemo(
     () =>
@@ -120,14 +138,70 @@ export default function CustomerSettings() {
       .join(', ');
   }, []);
 
+  // Helper function to check if address has meaningful data
+  const hasAddressData = useCallback((addr: AddressFields) => {
+    return !!(
+      addr.houseNumber ||
+      addr.soi ||
+      addr.road ||
+      addr.subdistrict ||
+      addr.district ||
+      (addr.provinceId && addr.provinceId !== 'bangkok')
+    );
+  }, []);
+
+  // Sync shop address with company address when checkbox is toggled
   useEffect(() => {
     if (sameAddress) {
-      setCustomer((prev) => ({ ...prev, shop_address: { ...prev.company_address } }));
+      setCustomer((prev) => {
+        const companyHasData = hasAddressData(prev.company_address);
+        const shopHasData = hasAddressData(prev.shop_address);
+        
+        // If company address has data, sync shop_address to company_address
+        if (companyHasData) {
+          return { ...prev, shop_address: { ...prev.company_address } };
+        } 
+        // If company is empty but shop has data, sync company_address to shop_address
+        // This preserves the shop address data instead of losing it
+        else if (shopHasData) {
+          return { ...prev, company_address: { ...prev.shop_address } };
+        }
+        // If both are empty, just sync shop to company (no data loss)
+        else {
+          return { ...prev, shop_address: { ...prev.company_address } };
+        }
+      });
     }
-  }, [sameAddress, customer.company_address]);
+  }, [sameAddress, hasAddressData]);
 
   const handleCustomerChange = (field: keyof CustomerData, value: string) => {
     setCustomer((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleDeviceChange = (
+    index: number,
+    field: 'type' | 'serial' | 'brand',
+    value: string
+  ) => {
+    setCustomer((prev) => {
+      const devices = [...prev.devices];
+      devices[index] = { ...devices[index], [field]: value };
+      return { ...prev, devices };
+    });
+  };
+
+  const addDeviceRow = () => {
+    setCustomer((prev) => ({
+      ...prev,
+      devices: [...prev.devices, { type: '', serial: '', brand: '' }],
+    }));
+  };
+
+  const removeDeviceRow = (index: number) => {
+    setCustomer((prev) => {
+      const devices = prev.devices.length > 1 ? prev.devices.filter((_, i) => i !== index) : prev.devices;
+      return { ...prev, devices };
+    });
   };
 
   const handleAddressChange = (
@@ -135,18 +209,152 @@ export default function CustomerSettings() {
     field: keyof AddressFields,
     value: string | boolean
   ) => {
-    setCustomer((prev) => ({
-      ...prev,
-      [type]: { ...prev[type], [field]: value },
-    }));
+    setCustomer((prev) => {
+      const updated = {
+        ...prev,
+        [type]: { ...prev[type], [field]: value },
+      };
+      
+      // If sameAddress is enabled and company_address changed, sync shop_address
+      if (sameAddress && type === 'company_address') {
+        updated.shop_address = { ...updated.company_address };
+      }
+      
+      return updated;
+    });
   };
 
-  const handleSave = () => {
-    toast({ 
-      title: 'Saved Successfully', 
-      description: 'Customer information has been saved',
-    });
-    console.log('Customer:', customer);
+  const handleSave = async () => {
+    // Validation
+    if (!customer.customer_name.trim()) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please enter customer name',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!customer.phone_number.trim()) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please enter phone number',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!customer.contact_person.trim()) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please enter contact person name',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast({
+          title: 'Error',
+          description: 'Authentication token not found',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Format address data - backend expects JSON strings
+      const hasShopAddress = customer.shop_address.houseNumber || 
+        customer.shop_address.soi || 
+        customer.shop_address.road || 
+        customer.shop_address.subdistrict || 
+        customer.shop_address.district || 
+        customer.shop_address.provinceId;
+
+      const hasCompanyAddress = customer.company_address.houseNumber || 
+        customer.company_address.soi || 
+        customer.company_address.road || 
+        customer.company_address.subdistrict || 
+        customer.company_address.district || 
+        customer.company_address.provinceId;
+
+      const customerData: any = {
+        customer_name: customer.customer_name,
+        contact_person: customer.contact_person,
+        phone_number: customer.phone_number,
+        company_name: customer.company_name || undefined,
+        shop_name: customer.shop_name || undefined,
+        contact_email: customer.contact_email || undefined,
+        contact_line_name: customer.contact_line_name || undefined,
+        shop_address: hasShopAddress ? customer.shop_address : undefined,
+        company_address: hasCompanyAddress ? customer.company_address : undefined,
+      };
+
+      const deviceEntries = customer.devices
+        .filter((d) => d.type || d.serial || d.brand)
+        .map((d) => ({
+          serial_number: d.serial || undefined,
+          device_type: {
+            device_type: d.type || 'unknown',
+            brand: d.brand || 'Unknown',
+            model: d.type || 'unknown',
+          },
+        }));
+
+      if (deviceEntries.length > 0) {
+        customerData.devices = deviceEntries;
+      }
+
+      const result = await apiClient.createCustomer(token, customerData);
+      
+      console.log('API Response:', result);
+
+      if (result.error) {
+        const errorMessage = typeof result.error === 'string' 
+          ? result.error 
+          : 'Failed to save customer';
+        console.error('API Error:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      if (!result.data) {
+        console.warn('No data returned from server');
+        throw new Error('No data returned from server');
+      }
+
+      toast({
+        title: 'Saved Successfully',
+        description: 'Customer information has been saved to database',
+      });
+
+      // Reset form
+      setCustomer({
+        customer_id: '',
+        customer_name: '',
+        shop_name: '',
+        devices: [
+          { type: '', serial: '', brand: '' },
+        ],
+        shop_address: { ...emptyAddress },
+        company_name: '',
+        company_address: { ...emptyAddress },
+        phone_number: '',
+        contact_person: '',
+        contact_email: '',
+        contact_line_name: '',
+      });
+    } catch (error: any) {
+      console.error('Error saving customer:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to save customer information',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -480,14 +688,25 @@ export default function CustomerSettings() {
           {/* Contact Info */}
           <div className="space-y-4 pt-4 border-t border-[#E8EBF5]">
             <h3 className="font-semibold text-[#092A6D] text-lg">Contact Information</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label className="text-[#333333] font-medium mb-2 block">Phone Number</Label>
+                <Label className="text-[#333333] font-medium mb-2 block">Contact Person Name *</Label>
+                <Input
+                  placeholder="Enter contact person name"
+                  value={customer.contact_person}
+                  onChange={(e) => handleCustomerChange('contact_person', e.target.value)}
+                  className="border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent"
+                  required
+                />
+              </div>
+              <div>
+                <Label className="text-[#333333] font-medium mb-2 block">Phone Number *</Label>
                 <Input
                   placeholder="0812345678"
                   value={customer.phone_number}
                   onChange={(e) => handleCustomerChange('phone_number', e.target.value)}
                   className="border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent"
+                  required
                 />
               </div>
               <div>
@@ -512,9 +731,104 @@ export default function CustomerSettings() {
             </div>
           </div>
 
+          {/* Device Information */}
+          <div className="space-y-4 pt-4 border-t border-[#E8EBF5]">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-[#092A6D] text-lg">Device</h3>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addDeviceRow}
+                className="flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4" />
+                Add Device
+              </Button>
+            </div>
+            <div className="space-y-3">
+              {customer.devices.map((device, index) => {
+                const selectedType = DEVICE_TYPE_OPTIONS.find((opt) => opt.value === device.type) || null;
+                return (
+                  <div
+                    key={index}
+                    className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_auto] gap-4 items-end bg-[#F5F7FA] p-3 rounded-lg border border-[#E8EBF5]"
+                  >
+                    <div>
+                      <Label className="text-[#333333] font-medium mb-2 block">Type</Label>
+                      <Select
+                        instanceId={`device-type-${deviceTypeSelectId}-${index}`}
+                        value={selectedType}
+                        onChange={(option) =>
+                          handleDeviceChange(index, 'type', option?.value || '')
+                        }
+                        options={DEVICE_TYPE_OPTIONS}
+                        placeholder="Select type..."
+                        isSearchable
+                        className="text-sm"
+                        classNames={{
+                          control: () =>
+                            'rounded-lg border border-[#E8EBF5] bg-white shadow-sm hover:border-[#D7B55A]',
+                          menu: () =>
+                            'rounded-lg border border-[#E8EBF5] bg-white shadow-lg',
+                          option: ({ isFocused, isSelected }) =>
+                            `px-3 py-2 ${
+                              isSelected
+                                ? 'bg-[#092A6D] text-white'
+                                : isFocused
+                                  ? 'bg-[#E8EBF5] text-[#092A6D]'
+                                  : 'text-[#333333]'
+                            }`,
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[#333333] font-medium mb-2 block">
+                        Serial Number
+                      </Label>
+                      <Input
+                        value={device.serial}
+                        onChange={(e) =>
+                          handleDeviceChange(index, 'serial', e.target.value)
+                        }
+                        className="border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent"
+                        placeholder="Enter serial number"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[#333333] font-medium mb-2 block">
+                        Brand
+                      </Label>
+                      <Input
+                        value={device.brand}
+                        onChange={(e) =>
+                          handleDeviceChange(index, 'brand', e.target.value)
+                        }
+                        className="border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent"
+                        placeholder="Enter brand"
+                      />
+                    </div>
+                    <div className="flex justify-end md:justify-center">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeDeviceRow(index)}
+                        className="text-red-500 hover:text-red-600"
+                        disabled={customer.devices.length === 1}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Save Button */}
           <div className="flex justify-end pt-6 border-t border-[#E8EBF5]">
-              <Button
+            <Button
               onClick={handleSave}
               className="bg-[#D7B55A] hover:bg-[#C4A04A] text-white font-medium px-8 py-2 rounded-lg transition-all shadow-sm"
             >

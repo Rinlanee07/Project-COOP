@@ -1,431 +1,742 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Select from "react-select";
-import { toast } from "@/components/ui/use-toast";
-import {
-  FileText,
-  User,
-  Building,
-  Calendar,
-  Package,
-} from "lucide-react";
-import { DayPicker } from "react-day-picker";
-import { format, parse } from "date-fns";
+import { useToast } from "@/components/ui/use-toast";
+import { apiClient } from "@/lib/api-client";
+import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
-// Mock data (เหมือนเดิม)
-const MOCK_CUSTOMERS = [
-  {
-    customer_id: "cust_001",
-    customer_name: "Aroi Coffee",
-    shop_name: "Sukhumvit Branch",
-    phone_number: "0812345678",
-    contact_line_name: "@aroi_coffee",
-  },
-  {
-    customer_id: "cust_002",
-    customer_name: "Sweet Bakery",
-    shop_name: "Rama 9 Branch",
-    phone_number: "0923456789",
-    contact_line_name: "@sweet_bakery",
-  },
-];
+export default function CreateRepair() {
+  const { toast } = useToast();
+  const router = useRouter();
 
-const MOCK_DEVICES = [
-  { id: "dev_001", type: "printer", serial_number: "SN123456", brand: "Epson" },
-  { id: "dev_002", type: "printer", serial_number: "SN789012", brand: "HP" },
-  { id: "dev_003", type: "cash_drawer", serial_number: "SN345678", brand: "Samsung" },
-  { id: "dev_004", type: "buzzer", serial_number: "SN901234", brand: "BuzzerPro" },
-];
+  const [loading, setLoading] = useState(false);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [customerDevices, setCustomerDevices] = useState<any[]>([]); // Devices for selected customer
 
-const MOCK_ASSIGNEES = [
-  { id: "emp_001", name: "John Doe" },
-  { id: "emp_002", name: "Jane Smith" },
-  { id: "emp_003", name: "Mike Lee" },
-];
+  // Form State - Basic Info
+  const [notificationDate, setNotificationDate] = useState<string>("");
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [selectedDevice, setSelectedDevice] = useState<any>(null);
 
-const DEVICE_LABELS: Record<string, string> = {
-  printer: "Printer",
-  cash_drawer: "Cash Drawer",
-  buzzer: "Buzzer",
-};
+  // Contact Information (will be populated from selected customer)
+  const [companyStoreName, setCompanyStoreName] = useState("");
+  const [address, setAddress] = useState("");
+  const [contactPersonName, setContactPersonName] = useState("");
+  const [contactPersonPhone, setContactPersonPhone] = useState("");
 
-const CreateRepair = () => {
-  const [subject, setSubject] = useState("");
-  const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState<"Low" | "Medium" | "High" | "Urgent">("Medium");
-  const [status, setStatus] = useState<"Open" | "Response" | "In Progress" | "Pending" | "Resolved" | "Closed">("Open");
-  const [selectedCustomer, setSelectedCustomer] = useState<{ value: string; label: string } | null>(null);
-  const [selectedDevice, setSelectedDevice] = useState<{ value: string; label: string } | null>(null);
-  const [selectedAssignee, setSelectedAssignee] = useState<{ value: string; label: string } | null>(null);
-  const [preferredDate, setPreferredDate] = useState<Date | undefined>(undefined);
-  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  // Product Information
+  const [productName, setProductName] = useState("");
+  const [productNumber, setProductNumber] = useState("");
+  const [defectSymptoms, setDefectSymptoms] = useState("");
+  const [accessories, setAccessories] = useState("");
+  const [notes, setNotes] = useState("");
 
-  const datePickerRef = useRef<HTMLDivElement>(null);
-  const formRef = useRef<HTMLFormElement>(null);
+  // Delivery Information
+  const [sentBy, setSentBy] = useState("");
+  const [receivedBy, setReceivedBy] = useState("");
+  const [dueDate, setDueDate] = useState<string>("");
 
-  const selectedCustomerData = MOCK_CUSTOMERS.find(c => c.customer_id === selectedCustomer?.value);
+  // Parts
+  const [parts, setParts] = useState<Array<{ part_number: string; description: string; quantity: number }>>([]);
 
-  const formatDateToInput = (date: Date | undefined): string => {
-    if (!date) return "";
-    return format(date, "dd/MM/yyyy");
+  // Engineer Report
+  const [engineerName, setEngineerName] = useState("");
+  const [repairDate, setRepairDate] = useState<string>("");
+  const [purchaseDate, setPurchaseDate] = useState<string>("");
+  const [contractDate, setContractDate] = useState<string>("");
+  const [engineerComment, setEngineerComment] = useState("");
+
+  // Other fields
+  const [priority, setPriority] = useState<any>("Medium");
+  const [files, setFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+
+  // Fetch Data
+  useEffect(() => {
+    const init = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      try {
+        const custRes = await apiClient.getCustomers(token);
+
+        if (custRes.data) {
+          setCustomers(custRes.data.map(c => ({
+            value: c.customer_id,
+            label: c.customer_name,
+            original: c
+          })));
+        }
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      }
+    };
+    init();
+
+    // Set default notification date to today
+    const today = new Date().toISOString().split('T')[0];
+    setNotificationDate(today);
+  }, []);
+
+  // Update customer info and devices when customer is selected
+  useEffect(() => {
+    if (selectedCustomer?.original) {
+      const customer = selectedCustomer.original;
+      setCompanyStoreName(customer.company_name || customer.shop_name || customer.customer_name || "");
+      
+      // Parse address from JSON string if it exists
+      let addressText = "";
+      if (customer.company_address) {
+        try {
+          const addr = typeof customer.company_address === 'string' 
+            ? JSON.parse(customer.company_address) 
+            : customer.company_address;
+          addressText = formatAddress(addr);
+        } catch (e) {
+          addressText = typeof customer.company_address === 'string' 
+            ? customer.company_address 
+            : "";
+        }
+      } else if (customer.shop_address) {
+        try {
+          const addr = typeof customer.shop_address === 'string' 
+            ? JSON.parse(customer.shop_address) 
+            : customer.shop_address;
+          addressText = formatAddress(addr);
+        } catch (e) {
+          addressText = typeof customer.shop_address === 'string' 
+            ? customer.shop_address 
+            : "";
+        }
+      } else if (customer.address) {
+        addressText = customer.address;
+      }
+      
+      setAddress(addressText);
+      setContactPersonName(customer.contact_person || "");
+      setContactPersonPhone(customer.phone_number || customer.contact_tel || "");
+
+      // Load customer devices from Cust_Devices
+      if (customer.Cust_Devices && Array.isArray(customer.Cust_Devices)) {
+        const devicesList = customer.Cust_Devices
+          .filter((cd: any) => cd.Device) // Only include active devices (where end_date is null or in future)
+          .map((cd: any) => {
+            const device = cd.Device;
+            const deviceType = device.DeviceType;
+            const deviceLabel = deviceType
+              ? `${deviceType.brand} ${deviceType.model}${device.serial_number ? ` (S/N: ${device.serial_number})` : ''}`
+              : `Device ${device.device_id}${device.serial_number ? ` (S/N: ${device.serial_number})` : ''}`;
+            
+            return {
+              value: device.device_id,
+              label: deviceLabel,
+              original: device
+            };
+          });
+        setCustomerDevices(devicesList);
+      } else {
+        // If Cust_Devices not loaded, fetch customer details
+        const fetchCustomerDevices = async () => {
+          const token = localStorage.getItem("token");
+          if (!token) return;
+          
+          try {
+            const customerRes = await apiClient.getCustomer(token, customer.customer_id);
+            if (customerRes.data?.Cust_Devices) {
+              const devicesList = customerRes.data.Cust_Devices
+                .filter((cd: any) => cd.Device)
+                .map((cd: any) => {
+                  const device = cd.Device;
+                  const deviceType = device.DeviceType;
+                  const deviceLabel = deviceType
+                    ? `${deviceType.brand} ${deviceType.model}${device.serial_number ? ` (S/N: ${device.serial_number})` : ''}`
+                    : `Device ${device.device_id}${device.serial_number ? ` (S/N: ${device.serial_number})` : ''}`;
+                  
+                  return {
+                    value: device.device_id,
+                    label: deviceLabel,
+                    original: device
+                  };
+                });
+              setCustomerDevices(devicesList);
+            }
+          } catch (error) {
+            console.error("Error fetching customer devices:", error);
+            setCustomerDevices([]);
+          }
+        };
+        fetchCustomerDevices();
+      }
+    } else {
+      setCompanyStoreName("");
+      setAddress("");
+      setContactPersonName("");
+      setContactPersonPhone("");
+      setCustomerDevices([]);
+      setSelectedDevice(null);
+      setProductName("");
+      setProductNumber("");
+    }
+  }, [selectedCustomer]);
+
+  // Helper function to format address
+  const formatAddress = (addr: any): string => {
+    if (!addr || typeof addr !== 'object') return "";
+    const parts = [];
+    if (addr.houseNumber) parts.push(`House No. ${addr.houseNumber}`);
+    if (addr.soi) parts.push(`Soi ${addr.soi}`);
+    if (addr.road) parts.push(`Road ${addr.road}`);
+    if (addr.subdistrict) parts.push(`Subdistrict ${addr.subdistrict}`);
+    if (addr.district) parts.push(`District ${addr.district}`);
+    if (addr.provinceId) {
+      const provinceName = typeof addr.provinceId === 'string' ? addr.provinceId : '';
+      parts.push(provinceName);
+    }
+    return parts.join(", ");
   };
 
-  const parseInputToDate = (str: string): Date | undefined => {
-    const parsed = parse(str, "dd/MM/yyyy", new Date());
-    return isNaN(parsed.getTime()) ? undefined : parsed;
-  };
+  // Update device info when device is selected
+  useEffect(() => {
+    if (selectedDevice?.original) {
+      const device = selectedDevice.original;
+      const deviceType = device.DeviceType;
+      
+      // Set Product Name from DeviceType (brand + model)
+      const productName = deviceType 
+        ? `${deviceType.brand || ''} ${deviceType.model || ''}`.trim()
+        : "";
+      setProductName(productName);
+      
+      // Set Serial Number
+      setProductNumber(device.serial_number || "");
+    } else {
+      setProductName("");
+      setProductNumber("");
+    }
+  }, [selectedDevice]);
 
-  // ส่วนที่เชื่อม backend 
-  // useEffect(() => {
-  //   const loadSettingsData = async () => {
-  //     try {
-  //       // ดึงข้อมูลลูกค้าและอุปกรณ์จาก /settings
-  //       const token = localStorage.getItem('token');
-  //       if (!token) return;
-  //       
-  //       const settings = await apiClient.get('/settings', { headers: { Authorization: `Bearer ${token}` } });
-  //       // จัดการข้อมูล...
-  //     } catch (err) {
-  //       console.error('Failed to load settings data', err);
-  //     }
-  //   };
-  //   loadSettingsData();
-  // }, []);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!subject || !description || !selectedCustomer || !selectedDevice || !selectedAssignee) {
-      toast({
-        title: "Incomplete Information",
-        description: "Please fill in subject, description, customer, device, and assignee.",
-        variant: "destructive",
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const selectedFiles = Array.from(e.target.files);
+      
+      // Filter only image files (.jpeg, .jpg, .png)
+      const imageFiles = selectedFiles.filter(file => {
+        const fileName = file.name.toLowerCase();
+        return fileName.endsWith('.jpeg') || fileName.endsWith('.jpg') || fileName.endsWith('.png');
       });
+      
+      setFiles(imageFiles);
+      
+      // Create preview URLs for images
+      const previews = imageFiles.map(file => URL.createObjectURL(file));
+      setImagePreviews(previews);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    // Revoke the object URL to free memory
+    URL.revokeObjectURL(imagePreviews[index]);
+    
+    const newFiles = files.filter((_, i) => i !== index);
+    const newPreviews = imagePreviews.filter((_, i) => i !== index);
+    
+    setFiles(newFiles);
+    setImagePreviews(newPreviews);
+  };
+
+  // Cleanup preview URLs on unmount
+  useEffect(() => {
+    return () => {
+      imagePreviews.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [imagePreviews]);
+
+  const addPart = () => {
+    setParts([...parts, { part_number: "", description: "", quantity: 1 }]);
+  };
+
+  const removePart = (index: number) => {
+    setParts(parts.filter((_, i) => i !== index));
+  };
+
+  const updatePart = (index: number, field: keyof typeof parts[0], value: string | number) => {
+    const newParts = [...parts];
+    newParts[index] = { ...newParts[index], [field]: value };
+    setParts(newParts);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomer) {
+      toast({ title: "Error", description: "Please select a customer", variant: "destructive" });
       return;
     }
 
-    // ส่วนส่งข้อมูลไป backend 
-    // try {
-    //   const token = localStorage.getItem('token');
-    //   if (!token) throw new Error('No authorization token');
-    //   
-    //   const payload = {
-    //     subject,
-    //     description,
-    //     customer_id: selectedCustomer.value,
-    //     device_id: selectedDevice.value,
-    //     assignee_id: selectedAssignee.value,
-    //     status,
-    //     preferred_date: preferredDate ? formatDateToInput(preferredDate) : null,
-    //   };
-    //   
-    //   await apiClient.post('/repair-requests', payload, {
-    //     headers: { Authorization: `Bearer ${token}` }
-    //   });
-    //   
-    //   toast({ title: "Repair request created successfully!" });
-    // } catch (err) {
-    //   toast({
-    //     title: "Error",
-    //     description: "Failed to create repair request.",
-    //     variant: "destructive",
-    //   });
-    //   return;
-    // }
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      
+      // Basic ticket info
+      formData.append("subject", defectSymptoms || "Repair Request");
+      formData.append("description", defectSymptoms);
+      formData.append("customer_id", selectedCustomer.value);
+      formData.append("priority", priority);
+      
+      if (selectedDevice) {
+        formData.append("device_id", selectedDevice.value);
+      }
 
-    console.log("Repair Request Data (Mock):", {
-      subject,
-      description,
-      priority,
-      status,
-      customer: selectedCustomerData,
-      device: MOCK_DEVICES.find(d => d.id === selectedDevice?.value),
-      assignee: MOCK_ASSIGNEES.find(e => e.id === selectedAssignee?.value),
-      preferredDate: preferredDate ? formatDateToInput(preferredDate) : "Not specified",
-    });
+      // Additional fields
+      formData.append("accessories", accessories);
+      formData.append("remark", notes);
+      formData.append("sent_by", sentBy);
+      formData.append("received_by", receivedBy);
+      formData.append("engineer_comment", engineerComment);
 
-    toast({
-      title: "Repair Request Created!",
-      description: `Simulation: ${subject}`,
-    });
+      // Delivery fields
+      if (dueDate) {
+        formData.append("due_date", dueDate);
+      }
 
-    setSubject("");
-    setDescription("");
-    setPriority("Medium");
-    setStatus("Open");
-    setSelectedCustomer(null);
-    setSelectedDevice(null);
-    setSelectedAssignee(null);
-    setPreferredDate(undefined);
-    setDatePickerOpen(false);
+      // Engineer report fields (store in comment or add to DTO)
+      if (purchaseDate) {
+        formData.append("purchase_date", purchaseDate);
+      }
+      if (contractDate) {
+        formData.append("contract_date", contractDate);
+      }
+
+      // Parts
+      formData.append("parts", JSON.stringify(parts));
+
+      // Files
+      files.forEach((file) => {
+        formData.append("files", file);
+      });
+
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("No token");
+
+      const result = await apiClient.createRepairTicket(token, formData);
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      toast({ title: "Success", description: "Repair ticket created successfully" });
+      // Navigate to repair-details page, or specific repair detail if we have the ID
+      if (result.data?.ticket_id) {
+        // Extract numeric ID from ticket_id (e.g., "T1768298627252" -> 1768298627252)
+        const numericId = result.data.ticket_id.replace('T', '');
+        router.push(`/dashboard/repair-details/${numericId}`);
+      } else {
+        router.push("/dashboard/repair-details");
+      }
+    } catch (error: any) {
+      console.error(error);
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to create repair ticket", 
+        variant: "destructive" 
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const customerOptions = MOCK_CUSTOMERS.map(cust => ({
-    value: cust.customer_id,
-    label: cust.customer_name,
-  }));
-
-  const deviceOptions = MOCK_DEVICES.map(device => ({
-    value: device.id,
-    label: `${DEVICE_LABELS[device.type] || device.type} — ${device.brand} (S/N: ${device.serial_number})`,
-  }));
-
-  const assigneeOptions = MOCK_ASSIGNEES.map(emp => ({
-    value: emp.id,
-    label: emp.name,
-  }));
-
-  const statusOptions = [
-    { value: "Open", label: "Open" },
-    { value: "Response", label: "Response" },
-    { value: "In Progress", label: "In Progress" },
-    { value: "Pending", label: "Pending" },
-    { value: "Resolved", label: "Resolved" },
-    { value: "Closed", label: "Closed" },
-  ];
-
-  // ปิด date picker เมื่อคลิกนอก
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        datePickerRef.current &&
-        !datePickerRef.current.contains(event.target as Node) &&
-        formRef.current &&
-        !formRef.current.contains(event.target as Node)
-      ) {
-        setDatePickerOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const inputClass = "w-full border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent rounded-md px-3 py-2 text-sm";
-
   return (
-    <div className="min-h-screen bg-[#F5F7FA] p-4 md:p-6">
-      <div className="max-w-7xl mx-auto">
-        <Card className="bg-white rounded-xl shadow-sm border border-[#E8EBF5]">
-          <CardContent className="p-6">
-            <form onSubmit={handleSubmit} ref={formRef} className="space-y-6">
-              {/* Assignee */}
-              <div className="space-y-2">
-                <Label className="text-[#333333] font-medium">
-                  Assignee <span className="text-red-600">*</span>
-                </Label>
-                <Select
-                  instanceId="assignee-select"
-                  value={selectedAssignee}
-                  onChange={setSelectedAssignee}
-                  options={assigneeOptions}
-                  placeholder="Select assignee..."
-                  isSearchable
-                  className="text-sm"
-                  classNames={{
-                    control: () => inputClass,
-                    menu: () => "rounded-md border border-[#E8EBF5] bg-white shadow-lg mt-1",
-                    option: ({ isFocused, isSelected }) =>
-                      `px-3 py-2 text-sm ${isSelected ? 'bg-[#092A6D] text-white' : isFocused ? 'bg-[#E8EBF5] text-[#092A6D]' : 'text-[#333333]'}`,
-                  }}
-                  required
-                />
-              </div>
+    <div className="max-w-4xl mx-auto pb-20">
+      <Card>
+        <CardContent className="p-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Date of Repair Notification */}
+            <div className="space-y-2">
+              <Label>RECEIVEING DATE <span className="text-red-500">*</span></Label>
+              <Input
+                type="date"
+                value={notificationDate}
+                onChange={(e) => setNotificationDate(e.target.value)}
+                required
+              />
+            </div>
 
-              {/* Subject */}
+            {/* Customer Selection */}
+            <div className="space-y-2">
+              <Label>Select Customer</Label>
+              <Select
+                instanceId="customer-select"
+                options={customers}
+                value={selectedCustomer}
+                onChange={setSelectedCustomer}
+                placeholder=""
+                className="text-sm"
+                isSearchable
+                isClearable
+                filterOption={(option, inputValue) => {
+                  const label = option.label?.toLowerCase() || '';
+                  const searchValue = inputValue.toLowerCase();
+                  return label.includes(searchValue);
+                }}
+              />
+            </div>
+
+            {/* Company/Store Name and Address */}
+            <div className="grid md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label className="text-[#333333] font-medium">
-                  Subject <span className="text-red-600">*</span>
-                </Label>
+                <Label>CUSTOMER NAME <span className="text-red-500">*</span></Label>
                 <Input
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className={inputClass}
+                  value={companyStoreName}
+                  onChange={(e) => setCompanyStoreName(e.target.value)}
+                  placeholder=""
                   required
                 />
               </div>
+              <div className="space-y-2">
+                <Label>ADDRESS <span className="text-red-500">*</span></Label>
+                <Textarea
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder=""
+                  className="min-h-[80px]"
+                  required
+                />
+              </div>
+            </div>
 
-              {/* Preferred Date */}
-              <div className="space-y-2 relative" ref={datePickerRef}>
-                <Label className="text-[#333333] font-medium">Preferred Date</Label>
-                <div className="flex">
-                  <Input
-                    value={formatDateToInput(preferredDate)}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "") {
-                        setPreferredDate(undefined);
-                      } else {
-                        const parsed = parseInputToDate(val);
-                        if (parsed) setPreferredDate(parsed);
-                      }
-                    }}
-                    onClick={() => setDatePickerOpen(true)}
-                    placeholder="DD/MM/YYYY"
-                    className={inputClass}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="ml-2 border-[#E8EBF5] text-[#333333] hover:bg-[#F5F7FA] w-10 h-10"
-                    onClick={() => setDatePickerOpen(!datePickerOpen)}
-                  >
-                    📅
-                  </Button>
-                </div>
-                {datePickerOpen && (
-                  <div className="absolute z-20 mt-1 bg-white border border-[#E8EBF5] rounded-lg shadow-lg p-4 w-full max-w-xs">
-                    <DayPicker
-                      mode="single"
-                      selected={preferredDate}
-                      onSelect={(date) => {
-                        setPreferredDate(date);
-                        setDatePickerOpen(false);
-                      }}
-                      weekStartsOn={0}
-                      className="text-sm"
+            {/* Contact Person Information */}
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label>CONTACT PERSON <span className="text-red-500">*</span></Label>
+                <Input
+                  value={contactPersonName}
+                  onChange={(e) => setContactPersonName(e.target.value)}
+                  placeholder=""
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>TEL <span className="text-red-500">*</span></Label>
+                <Input
+                  value={contactPersonPhone}
+                  onChange={(e) => setContactPersonPhone(e.target.value)}
+                  placeholder=""
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Device Selection */}
+            <div className="space-y-2">
+              <Label>Select Device <span className="text-red-500">*</span></Label>
+              <Select
+                instanceId="device-select"
+                options={customerDevices}
+                value={selectedDevice}
+                onChange={setSelectedDevice}
+                placeholder={selectedCustomer ? "Select Device" : "Please select customer first"}
+                className="text-sm"
+                isDisabled={!selectedCustomer}
+                isClearable
+                isSearchable
+                required
+              />
+              {selectedCustomer && customerDevices.length === 0 && (
+                <p className="text-sm text-gray-500 italic">
+                  No devices found for this customer
+                </p>
+              )}
+            </div>
+
+            {/* Product Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Product Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label>PRODUCT <span className="text-red-500">*</span></Label>
+                    <Input
+                      value={productName}
+                      onChange={(e) => setProductName(e.target.value)}
+                      placeholder=""
+                      required
                     />
                   </div>
-                )}
-              </div>
-
-              {/* Status */}
-              <div className="space-y-2">
-                <Label className="text-[#333333] font-medium">Status</Label>
-                <Select
-                  instanceId="status-select"
-                  value={statusOptions.find(opt => opt.value === status)}
-                  onChange={(opt) => setStatus((opt?.value as any) || "Open")}
-                  options={statusOptions}
-                  isSearchable={false}
-                  className="text-sm"
-                  classNames={{
-                    control: () => inputClass,
-                    menu: () => "rounded-md border border-[#E8EBF5] bg-white shadow-lg mt-1",
-                    option: ({ isFocused, isSelected }) =>
-                      `px-3 py-2 text-sm ${isSelected ? 'bg-[#092A6D] text-white' : isFocused ? 'bg-[#E8EBF5] text-[#092A6D]' : 'text-[#333333]'}`,
-                  }}
-                />
-              </div>
-
-              {/* Customer */}
-              <div className="space-y-2">
-                <Label className="text-[#333333] font-medium">
-                  Customer <span className="text-red-600">*</span>
-                </Label>
-                <Select
-                  instanceId="customer-select"
-                  value={selectedCustomer}
-                  onChange={setSelectedCustomer}
-                  options={customerOptions}
-                  isSearchable
-                  className="text-sm"
-                  classNames={{
-                    control: () => inputClass,
-                    menu: () => "rounded-md border border-[#E8EBF5] bg-white shadow-lg mt-1",
-                    option: ({ isFocused, isSelected }) =>
-                      `px-3 py-2 text-sm ${isSelected ? 'bg-[#092A6D] text-white' : isFocused ? 'bg-[#E8EBF5] text-[#092A6D]' : 'text-[#333333]'}`,
-                  }}
-                  required
-                />
-              </div>
-
-              {/* Shop / Branch */}
-              <div className="space-y-2">
-                <Label className="text-[#333333] font-medium">Shop / Branch</Label>
-                <Input
-                  value={selectedCustomerData?.shop_name || ""}
-                  disabled
-                  className={`${inputClass} bg-[#F9FAFB] cursor-not-allowed`}
-                />
-              </div>
-
-              {selectedCustomerData && (
-                <div className="mt-3 p-3 bg-[#F9FAFB] rounded-lg text-sm text-[#333333] border border-[#E8EBF5]">
-                  <div className="flex flex-wrap gap-4">
-                    <span>📞 {selectedCustomerData.phone_number}</span>
-                    {selectedCustomerData.contact_line_name && (
-                      <span>💬 {selectedCustomerData.contact_line_name}</span>
-                    )}
+                  <div className="space-y-2">
+                    <Label>SERIAL NO. <span className="text-red-500">*</span></Label>
+                    <Input
+                      value={productNumber}
+                      onChange={(e) => setProductNumber(e.target.value)}
+                      placeholder=""
+                      required
+                    />
                   </div>
                 </div>
-              )}
 
-              {/* Device */}
+                <div className="space-y-2">
+                  <Label>DESC OF FAULT <span className="text-red-500">*</span></Label>
+                  <Textarea
+                    value={defectSymptoms}
+                    onChange={(e) => setDefectSymptoms(e.target.value)}
+                    placeholder=""
+                    className="min-h-[100px]"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>ACCBSSORIBS <span className="text-red-500">*</span></Label>
+                  <Textarea
+                    value={accessories}
+                    onChange={(e) => setAccessories(e.target.value)}
+                    placeholder=""
+                    className="min-h-[80px]"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>REMARK</Label>
+                  <Textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder=""
+                    className="min-h-[80px]"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Delivery Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">DELIVERY INFORMATION</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label>CUSTOMER</Label>
+                    <Input
+                      value={sentBy}
+                      onChange={(e) => setSentBy(e.target.value)}
+                      placeholder="Name of person bringing item"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>RBCBIVE BY</Label>
+                    <Input
+                      value={receivedBy}
+                      onChange={(e) => setReceivedBy(e.target.value)}
+                      placeholder="Name of person receiving item"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>DUE DATE</Label>
+                  <Input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Parts Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Parts <span className="text-red-500">*</span></CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <p className="text-sm text-gray-600">PART NO., DESCRIPTION, QUANTITY</p>
+                  <Button type="button" variant="outline" size="sm" onClick={addPart}>
+                    + Add Part
+                  </Button>
+                </div>
+
+                {parts.length === 0 && (
+                  <p className="text-sm text-gray-400 italic">No parts added.</p>
+                )}
+
+                {parts.map((part, index) => (
+                  <div key={index} className="flex gap-2 items-start">
+                    <Input
+                      placeholder="Part No."
+                      value={part.part_number}
+                      onChange={(e) => updatePart(index, "part_number", e.target.value)}
+                      className="w-1/4"
+                    />
+                    <Input
+                      placeholder="Description"
+                      value={part.description}
+                      onChange={(e) => updatePart(index, "description", e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Quantity"
+                      value={part.quantity}
+                      onChange={(e) => updatePart(index, "quantity", parseInt(e.target.value) || 0)}
+                      className="w-24"
+                      min="1"
+                    />
+                    <Button 
+                      type="button" 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => removePart(index)} 
+                      className="text-red-500"
+                    >
+                      ×
+                    </Button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Engineer Report Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">ENGINEER REPORT</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label>ENGINEER</Label>
+                    <Input
+                      value={engineerName}
+                      onChange={(e) => setEngineerName(e.target.value)}
+                      placeholder="Engineer Name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>REPAIR DATE</Label>
+                    <Input
+                      type="date"
+                      value={repairDate}
+                      onChange={(e) => setRepairDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>PURCHASE DATE</Label>
+                  <Input
+                    type="date"
+                    value={purchaseDate}
+                    onChange={(e) => setPurchaseDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>CONTRACT DATE</Label>
+                  <Input
+                    type="date"
+                    value={contractDate}
+                    onChange={(e) => setContractDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>COMMENT</Label>
+                  <Textarea
+                    value={engineerComment}
+                    onChange={(e) => setEngineerComment(e.target.value)}
+                    placeholder="Engineer comments..."
+                    className="min-h-[100px]"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Priority and Attachments */}
+            <div className="grid md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label className="text-[#333333] font-medium">
-                  Device <span className="text-red-600">*</span>
-                </Label>
+                <Label>Priority <span className="text-red-500">*</span></Label>
                 <Select
-                  instanceId="device-select"
-                  value={selectedDevice}
-                  onChange={setSelectedDevice}
-                  options={deviceOptions}
-                  placeholder="Select device..."
-                  isSearchable
+                  instanceId="priority-select"
+                  options={[
+                    { value: "Low", label: "Low" },
+                    { value: "Medium", label: "Medium" },
+                    { value: "High", label: "High" },
+                    { value: "Critical", label: "Critical" },
+                  ]}
+                  value={{ value: priority, label: priority }}
+                  onChange={(opt) => setPriority(opt?.value || "Medium")}
                   className="text-sm"
-                  classNames={{
-                    control: () => inputClass,
-                    menu: () => "rounded-md border border-[#E8EBF5] bg-white shadow-lg mt-1",
-                    option: ({ isFocused, isSelected }) =>
-                      `px-3 py-2 text-sm ${isSelected ? 'bg-[#092A6D] text-white' : isFocused ? 'bg-[#E8EBF5] text-[#092A6D]' : 'text-[#333333]'}`,
-                  }}
                   required
                 />
               </div>
 
-              {/* Description */}
               <div className="space-y-2">
-                <Label className="text-[#333333] font-medium">
-                  Description <span className="text-red-600">*</span>
-                </Label>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the issue..."
-                  className={`${inputClass} min-h-[160px]`}
-                  required
-                />
+                <Label>Attachments / ไฟล์แนบ (Images) <span className="text-red-500">*</span></Label>
+                <div className="space-y-2">
+                  <Input
+                    type="file"
+                    multiple
+                    onChange={handleFileChange}
+                    className="cursor-pointer"
+                    accept=".jpeg,.jpg,.png,image/jpeg,image/jpg,image/png"
+                    required
+                  />
+                  <span className="text-sm text-gray-500">
+                    {files.length} file(s) selected (Only .jpeg, .jpg, .png allowed)
+                  </span>
+                  
+                  {/* Image Previews */}
+                  {imagePreviews.length > 0 && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                      {imagePreviews.map((preview, index) => (
+                        <div key={index} className="relative group">
+                          <img
+                            src={preview}
+                            alt={`Preview ${index + 1}`}
+                            className="w-full h-32 object-cover rounded-md border border-gray-300"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(index)}
+                            className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                            aria-label="Remove image"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+            </div>
 
-              {/* Action Buttons */}
-              <div className="flex justify-end gap-4 pt-6 border-t border-[#E8EBF5]">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="px-6 py-2 border-[#E8EBF5] hover:bg-[#F5F7FA] text-[#333333]"
-                  onClick={() => {
-                    setSubject("");
-                    setDescription("");
-                    setPriority("Medium");
-                    setStatus("Open");
-                    setSelectedCustomer(null);
-                    setSelectedDevice(null);
-                    setSelectedAssignee(null);
-                    setPreferredDate(undefined);
-                  }}
-                >
-                  Clear Form
-                </Button>
-                <Button
-                  type="submit"
-                  className="px-6 py-2 bg-[#D7B55A] hover:bg-[#C4A04A] text-white font-medium rounded-lg transition-all shadow-sm"
-                >
-                  Create Repair Request
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
+            {/* Submit Buttons */}
+            <div className="pt-4 flex justify-end gap-4 border-t">
+              <Button type="button" variant="outline" onClick={() => router.back()}>
+                Cancel / ยกเลิก
+              </Button>
+              <Button type="submit" disabled={loading} className="bg-[#D7B55A] hover:bg-[#C4A04A] text-white">
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create Repair Ticket / สร้างรายการซ่อม"
+                )}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
-};
-
-export default CreateRepair;
+}

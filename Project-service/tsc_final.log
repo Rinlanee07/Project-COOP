@@ -1,0 +1,1 @@
+﻿app/dashboard/settings/customers/page.tsx(21,42): error TS2339: Property 'get' does not exist on type 'ApiClient'.

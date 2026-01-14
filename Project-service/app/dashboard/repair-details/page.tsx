@@ -21,6 +21,18 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { repairService, type RepairListItem } from "@/services/repairService";
+import { format, isValid, parseISO } from "date-fns";
+
+// Helper function to safely format dates
+const safeFormatDate = (dateValue: string | Date | null | undefined, formatStr: string = 'dd/MM/yyyy'): string => {
+    if (!dateValue) return 'N/A';
+    try {
+        const date = typeof dateValue === 'string' ? parseISO(dateValue) : new Date(dateValue);
+        return isValid(date) ? format(date, formatStr) : 'Invalid date';
+    } catch {
+        return 'Invalid date';
+    }
+};
 
 const RepairListPage = () => {
   const [repairs, setRepairs] = useState<RepairListItem[]>([]);
@@ -192,86 +204,49 @@ const RepairListPage = () => {
           </Card>
         ) : (
           <div className="grid gap-4">
-            {filteredRepairs.map((repair) => (
-              <Link
-                key={repair.id}
-                href={`/dashboard/repair-details/${repair.id}`}
-                className="block"
-              >
-                <Card className="bg-white border border-[#E8EBF5] rounded-xl shadow-sm hover:shadow-md transition-all hover:border-[#D7B55A]">
-                  <CardContent className="p-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                      {/* Left: Main Info */}
-                      <div className="flex-1 space-y-3">
-                        <div className="flex items-start gap-3">
-                          <Badge className={getStatusColor(repair.status)}>
-                            {repair.status}
-                          </Badge>
+            {filteredRepairs.map((repair) => {
+              // Generate ticket ID format (T + numeric ID)
+              const ticketId = `T${repair.id}`;
+              // Use printerModel as subject/title, or fallback
+              const title = repair.printerModel || `Repair #${repair.id}`;
+              // Use description or create a simple one
+              const description = `${repair.printerModel || 'Device'} - ${repair.serialNumber || 'N/A'}`;
+              
+              return (
+                <Link
+                  key={repair.id}
+                  href={`/dashboard/repair-details/${repair.id}`}
+                  className="block"
+                >
+                  <Card className="cursor-pointer hover:shadow-md transition">
+                    <CardContent className="p-4 flex justify-between items-center">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-gray-500">{ticketId}</span>
+                          <h3 className="font-semibold text-lg">{title}</h3>
                           {repair.priority && (
-                            <div className="flex items-center gap-1.5">
-                              <div
-                                className={`w-2 h-2 rounded-full ${getPriorityColor(
-                                  repair.priority
-                                )}`}
-                              />
-                              <span className="text-xs text-[#666666]">
-                                {repair.priority}
-                              </span>
-                            </div>
+                            <Badge variant={repair.priority === 'High' || repair.priority === 'Critical' ? 'destructive' : 'default'}>
+                              {repair.priority}
+                            </Badge>
                           )}
                         </div>
-
-                        <div>
-                          <h3 className="text-lg font-semibold text-[#092A6D] mb-1">
-                            {repair.printerModel}
-                          </h3>
-                          <p className="text-sm text-[#666666]">
-                            <span className="font-medium">ลูกค้า:</span>{" "}
-                            {repair.customerName || "N/A"}
-                          </p>
-                          <p className="text-sm text-[#666666]">
-                            <span className="font-medium">Serial:</span>{" "}
-                            {repair.serialNumber || "N/A"}
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap gap-4 text-xs text-[#666666]">
-                          {repair.assignedTo && (
-                            <span>
-                              <span className="font-medium">ผู้รับผิดชอบ:</span>{" "}
-                              {repair.assignedTo}
-                            </span>
-                          )}
-                          {repair.createdAgo && (
-                            <span>
-                              <span className="font-medium">สร้างเมื่อ:</span>{" "}
-                              {repair.createdAgo}
-                            </span>
-                          )}
-                          {repair.dueIn && (
-                            <span className="text-orange-600">
-                              <span className="font-medium">ครบกำหนด:</span>{" "}
-                              {repair.dueIn}
-                            </span>
-                          )}
+                        <p className="text-sm text-gray-600 mt-1">{description.substring(0, 100)}...</p>
+                        <div className="text-xs text-gray-400 mt-2">
+                          Customer: {repair.customerName || 'N/A'} | Created: {repair.createdAt ? safeFormatDate(repair.createdAt) : 'N/A'}
                         </div>
                       </div>
-
-                      {/* Right: ID and Arrow */}
-                      <div className="flex items-center justify-between sm:flex-col sm:items-end gap-2">
-                        <div className="text-right">
-                          <p className="text-sm text-[#666666]">Ticket ID</p>
-                          <p className="text-lg font-bold text-[#092A6D]">
-                            #{repair.id}
-                          </p>
-                        </div>
-                        <ChevronRight className="h-5 w-5 text-[#666666] sm:hidden" />
+                      <div>
+                        <Badge variant="outline" className={
+                          repair.status === 'New' ? 'bg-blue-50 text-blue-700' :
+                          repair.status === 'Resolved' || repair.status === 'Completed' ? 'bg-green-50 text-green-700' : 
+                          'bg-gray-50'
+                        }>{repair.status}</Badge>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>

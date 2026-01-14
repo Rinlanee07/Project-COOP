@@ -1,12 +1,26 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
-export interface CreateTicketDto {
+import { UploadService } from '../upload/upload.service';
+
+export class CreateTicketDto {
   subject: string;
   description: string;
   priority?: string;
   customer_id: string;
   device_id?: string;
+  accessories?: string;
+  remark?: string;
+  // New fields
+  sent_by?: string;
+  received_by?: string;
+  engineer_comment?: string;
+  purchase_date?: string;
+  parts?: Array<{
+    part_number?: string;
+    description: string;
+    quantity: number;
+  }> | string; // Allow string for FormData JSON parsing
 }
 
 export interface UpdateTicketStatusDto {
@@ -16,7 +30,10 @@ export interface UpdateTicketStatusDto {
 
 @Injectable()
 export class TicketService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private uploadService: UploadService
+  ) { }
 
   async getTickets(userId: string, userRole: string, filters?: {
     startDate?: string;
@@ -90,6 +107,33 @@ export class TicketService {
           orderBy: {
             updated_at: 'desc'
           }
+        },
+        Attachments: true,
+        TicketParts: true,
+        assignee: {
+          select: {
+            username: true,
+            email: true
+          }
+        },
+        reporter: {
+          select: {
+            username: true,
+            email: true
+          }
+        },
+        RepairLogs: {
+          include: {
+            Technician: {
+              select: {
+                username: true,
+                email: true
+              }
+            }
+          },
+          orderBy: {
+            repair_date: 'desc'
+          }
         }
       }
     });
@@ -105,7 +149,9 @@ export class TicketService {
     return ticket;
   }
 
-  async createTicket(createDto: CreateTicketDto, userId: string, userRole: string) {
+  // ... inside TicketService ...
+
+  async createTicket(createDto: CreateTicketDto, userId: string, userRole: string, files?: Array<Express.Multer.File>) {
     // Generate ticket ID
     const ticketId = 'T' + Date.now().toString();
 
@@ -119,6 +165,12 @@ export class TicketService {
         device_id: createDto.device_id,
         reporter_id: userId,
         status: 'New',
+        accessories: createDto.accessories,
+        remark: createDto.remark,
+        sent_by: createDto.sent_by,
+        received_by: createDto.received_by,
+        engineer_comment: createDto.engineer_comment,
+        purchase_date: createDto.purchase_date ? new Date(createDto.purchase_date) : null,
       },
       include: {
         Customer: true,
@@ -126,9 +178,36 @@ export class TicketService {
           include: {
             DeviceType: true
           }
-        }
+        },
+        TicketParts: true,
       }
     });
+
+    // Create Ticket Parts if any
+    if (createDto.parts) {
+      let partsData = createDto.parts;
+
+      // Parse if string (from FormData)
+      if (typeof partsData === 'string') {
+        try {
+          partsData = JSON.parse(partsData);
+        } catch (e) {
+          console.error('Failed to parse parts JSON', e);
+          partsData = [];
+        }
+      }
+
+      if (Array.isArray(partsData) && partsData.length > 0) {
+        await this.prisma.ticketPart.createMany({
+          data: partsData.map(part => ({
+            ticket_id: ticketId,
+            part_number: part.part_number,
+            description: part.description,
+            quantity: Number(part.quantity) || 1
+          }))
+        });
+      }
+    }
 
     // Create initial status update
     await this.prisma.ticket_Update.create({
@@ -141,7 +220,37 @@ export class TicketService {
       }
     });
 
-    return ticket;
+    // Handle File Uploads
+    if (files && files.length > 0) {
+      for (const file of files) {
+        try {
+          const uploadResult = await this.uploadService.uploadFile(file);
+          await this.prisma.attachment.create({
+            data: {
+              ticket_id: ticket.ticket_id,
+              file_name: uploadResult.fileName,
+              file_url: uploadResult.url,
+              file_type: file.mimetype,
+              uploaded_by: userId
+            }
+          });
+        } catch (error) {
+          console.error(`Failed to upload attachment for ticket ${ticketId}`, error);
+        }
+      }
+    }
+
+    // Return the created ticket with parts (need to refetch or manually attach if crucial, but usually fine)
+    // Refetch to include parts and attachments
+    return this.prisma.ticket.findUnique({
+      where: { ticket_id: ticketId },
+      include: {
+        Customer: true,
+        Device: { include: { DeviceType: true } },
+        TicketParts: true,
+        Attachments: true
+      }
+    });
   }
 
   async updateTicketStatus(id: string, updateDto: UpdateTicketStatusDto, userId: string, userRole: string) {

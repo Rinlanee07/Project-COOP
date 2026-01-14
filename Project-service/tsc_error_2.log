@@ -1,0 +1,8 @@
+﻿.next/types/app/dashboard/settings/customers/[id]/page.ts(34,29): error TS2344: Type '{ params: { id: string; }; }' does not satisfy the constraint 'PageProps'.
+  Types of property 'params' are incompatible.
+    Type '{ id: string; }' is missing the following properties from type 'Promise<any>': then, catch, finally, [Symbol.toStringTag]
+.next/types/app/dashboard/technical/ticket/[id]/page.ts(34,29): error TS2344: Type '{ params: { id: string; }; }' does not satisfy the constraint 'PageProps'.
+  Types of property 'params' are incompatible.
+    Type '{ id: string; }' is missing the following properties from type 'Promise<any>': then, catch, finally, [Symbol.toStringTag]
+app/dashboard/settings/customers/[id]/page.tsx(208,17): error TS2698: Spread types may only be created from object types.
+app/dashboard/settings/customers/page.tsx(21,42): error TS2339: Property 'get' does not exist on type 'ApiClient'.

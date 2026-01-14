@@ -1,13 +1,13 @@
-// src/ticket/ticket.module.ts
 import { Module } from '@nestjs/common';
 import { TicketController } from './ticket.controller';
 import { TicketService } from './ticket.service';
-import { AuthModule } from '../auth/auth.module'; // ← เพิ่มบรรทัดนี้
-import { PrismaService } from '../prisma/prisma.service';
+import { AuthModule } from '../auth/auth.module';
+import { PrismaModule } from '../prisma/prisma.module';
+import { UploadModule } from '../upload/upload.module';
 
 @Module({
-  imports: [AuthModule], // ← สำคัญมาก: เพิ่ม AuthModule ที่นี่
+  imports: [AuthModule, PrismaModule, UploadModule],
   controllers: [TicketController],
-  providers: [TicketService, PrismaService],
+  providers: [TicketService],
 })
-export class TicketModule {}
+export class TicketModule { }

@@ -37,6 +37,13 @@ export interface Ticket {
   reporter_id?: string | null;
   assigned_to?: string | null;
 
+  // New fields
+  sent_by?: string | null;
+  received_by?: string | null;
+  engineer_comment?: string | null;
+  accessories?: string | null;
+  remark?: string | null;
+
   // Relations (optional, depending on API include)
   Customer?: Customer | null;
   Device?: Device | null;
@@ -50,6 +57,17 @@ export interface CreateTicketRequest {
   priority?: TicketPriority;
   customer_id: string;
   device_id?: string;
+  // New fields
+  sent_by?: string;
+  received_by?: string;
+  engineer_comment?: string;
+  accessories?: string;
+  remark?: string;
+  parts?: Array<{
+    part_number?: string;
+    description: string;
+    quantity: number;
+  }>;
 }
 
 export interface UpdateTicketStatusRequest {

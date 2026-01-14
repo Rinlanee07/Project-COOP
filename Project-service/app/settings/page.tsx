@@ -1,41 +1,70 @@
 'use client';
 
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import CustomerSettings from './components/CustomerSettings';
-import DeviceTypeSettings from './components/DeviceTypeSettings';
-import { User, Settings as SettingsIcon } from 'lucide-react';
+import DisplaySettings from './components/DisplaySettings';
+import { Users, Monitor } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
+
+type SettingsTab = 'customer' | 'display';
 
 export default function SettingsPage() {
+  const [activeTab, setActiveTab] = useState<SettingsTab>('customer');
+
+  const tabs = [
+    {
+      id: 'customer' as SettingsTab,
+      icon: Users,
+      tooltip: 'หน้านี้ใช้สำหรับจัดการข้อมูลลูกค้า ตั้งค่าและแก้ไขข้อมูลส่วนตัว ร้านค้า และที่อยู่',
+    },
+    {
+      id: 'display' as SettingsTab,
+      icon: Monitor,
+      tooltip: 'หน้านี้ใช้สำหรับจัดการการตั้งค่าจอแสดงผลและการแสดงผลต่างๆ',
+    },
+  ];
+
   return (
     <DashboardLayout>
+      <div className="flex gap-6 h-full">
+        {/* Small Sidebar */}
+        <aside className="w-16 bg-white rounded-lg border border-[#E8EBF5] shadow-sm h-fit flex flex-col p-2 space-y-2">
+          <TooltipProvider delayDuration={200}>
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <Tooltip key={tab.id}>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={cn(
+                        'w-12 h-12 flex items-center justify-center rounded-lg transition-all duration-200',
+                        isActive
+                          ? 'bg-[#092A6D] text-white shadow-md'
+                          : 'text-[#666666] hover:bg-[#E8EBF5] hover:text-[#092A6D]'
+                      )}
+                    >
+                      <Icon className="w-5 h-5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-xs p-3">
+                    <p className="text-sm leading-relaxed">{tab.tooltip}</p>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </TooltipProvider>
+        </aside>
 
-        <Tabs defaultValue="customer" className="w-full">
-          <TabsList className="bg-[#E8EBF5] p-1 rounded-lg mb-6 w-full md:w-auto">
-            <TabsTrigger
-              value="customer"
-              className="data-[state=active]:bg-[#D7B55A] data-[state=active]:text-white text-[#092A6D] font-medium px-6 py-2 rounded-md transition-all"
-            >
-              <User className="w-4 h-4 mr-2" />
-              Customer Settings
-            </TabsTrigger>
-            <TabsTrigger
-              value="device"
-              className="data-[state=active]:bg-[#D7B55A] data-[state=active]:text-white text-[#092A6D] font-medium px-6 py-2 rounded-md transition-all"
-            >
-              <SettingsIcon className="w-4 h-4 mr-2" />
-              Device Type Settings
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="customer" className="mt-0">
-            <CustomerSettings />
-          </TabsContent>
-
-          <TabsContent value="device" className="mt-0">
-            <DeviceTypeSettings />
-          </TabsContent>
-        </Tabs>
+        {/* Content Area */}
+        <div className="flex-1">
+          {activeTab === 'customer' && <CustomerSettings />}
+          {activeTab === 'display' && <DisplaySettings />}
+        </div>
+      </div>
     </DashboardLayout>
   );
 }

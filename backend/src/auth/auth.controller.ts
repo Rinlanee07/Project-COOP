@@ -5,7 +5,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Post('login')
   async login(@Body() loginDto: LoginDto) {
@@ -20,6 +20,12 @@ export class AuthController {
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   async getProfile(@Request() req) {
-    return this.authService.getProfile(req.user.sub);
+    return this.authService.getProfile(req.user.sub); // 'sub' is user_id from jwt strategy
+  }
+
+  @Post('profile') // Or Patch
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(@Request() req, @Body() body: any) {
+    return this.authService.updateProfile(req.user.sub, body); // using 'sub' which is set in jwt strategy as userId
   }
 }

@@ -27,14 +27,24 @@ export interface Customer {
   updated_at: string;
 }
 
+export interface DeviceType {
+  id: string;
+  device_type: string;
+  brand: string;
+  model: string;
+}
+
 export interface Device {
   device_id: string;
   serial_number?: string | null;
   installation_location?: string | null;
-  warranty_end_date?: string | null; // ISO date string
+  warranty_end_date?: string | null;
   created_at: string;
   updated_at: string;
   device_type_id?: string | null;
+  DeviceType?: DeviceType;
+  brand?: string; // Optional fallback/flattened
+  model?: string; // Optional fallback/flattened
 }
 
 export interface Ticket {
@@ -85,6 +95,15 @@ class ApiClient {
 
   constructor(baseURL: string = API_BASE_URL) {
     this.baseURL = baseURL;
+    // Log configuration on initialization (only in development)
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+      console.log('[ApiClient] Initialized with baseURL:', this.baseURL);
+      if (this.baseURL === '/api') {
+        console.log('[ApiClient] Using Next.js proxy - requests will be forwarded to http://localhost:3001');
+      } else {
+        console.log('[ApiClient] Using direct backend URL');
+      }
+    }
   }
 
   private async request<T>(
@@ -92,7 +111,7 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseURL}${endpoint}`;
-    
+
     const defaultHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -106,22 +125,78 @@ class ApiClient {
     const config: RequestInit = { ...options, headers };
 
     try {
+      // Log request details (hide token for security)
+      const logHeaders = { ...headers };
+      if (logHeaders['Authorization']) {
+        logHeaders['Authorization'] = 'Bearer ***';
+      }
+      console.log('[ApiClient] Making request:', { 
+        method: options.method || 'GET', 
+        url, 
+        endpoint,
+        baseURL: this.baseURL,
+        hasAuth: !!headers['Authorization']
+      });
+      
       const response = await fetch(url, config);
       const contentType = response.headers.get('content-type');
-      const data = contentType?.includes('application/json') 
+      const data = contentType?.includes('application/json')
         ? await response.json()
         : null;
 
       if (!response.ok) {
+        const errorMessage = data?.error || data?.message || `HTTP ${response.status}: ${response.statusText}`;
+        console.error('[ApiClient] Request failed:', { 
+          url, 
+          status: response.status, 
+          statusText: response.statusText,
+          error: errorMessage,
+          hasAuth: !!headers['Authorization'],
+          responseData: data
+        });
+        
+        // If 401 Unauthorized, clear token and suggest re-login
+        if (response.status === 401 && typeof window !== 'undefined') {
+          console.warn('[ApiClient] 401 Unauthorized - Token may be expired or invalid');
+          console.warn('[ApiClient] Clearing token and user data from localStorage');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+        }
+        
         return {
-          error: data?.error || data?.message || `HTTP ${response.status}`,
+          error: errorMessage,
         };
       }
 
       return { data };
     } catch (error) {
+      // Provide more detailed error messages
+      let errorMessage = 'Network error';
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        // Determine if we're using proxy or direct connection
+        const isUsingProxy = this.baseURL === '/api' || this.baseURL.startsWith('/api');
+        if (isUsingProxy) {
+          errorMessage = `Failed to connect to API via proxy. Please ensure:
+1. The backend server is running on port 3001
+2. Next.js rewrite is configured correctly in next.config.mjs
+3. The backend is accessible at http://localhost:3001`;
+        } else {
+          errorMessage = `Failed to connect to API at ${this.baseURL}. Please ensure the backend server is running.`;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      console.error('[ApiClient] Request exception:', { 
+        baseURL: this.baseURL,
+        url, 
+        endpoint,
+        error: errorMessage,
+        originalError: error instanceof Error ? error.message : String(error)
+      });
+      
       return {
-        error: error instanceof Error ? error.message : 'Network error',
+        error: errorMessage,
       };
     }
   }
@@ -140,6 +215,14 @@ class ApiClient {
     });
   }
 
+  async updateProfile(token: string, data: Partial<User> & { password?: string }): Promise<ApiResponse<any>> {
+    return this.request('/auth/profile', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data)
+    });
+  }
+
   // === Tickets ===
   async getTickets(
     token: string,
@@ -154,21 +237,59 @@ class ApiClient {
     });
   }
 
-  // ✅ สร้าง ticket ใหม่ — ตรงกับ Prisma
-  async createRepairRequest(
-    token: string,
-    payload: {
-      subject: string;
-      description: string;
-      customer_id: string;
-      device_id?: string; // optional
-      priority?: 'Low' | 'Medium' | 'High';
-    }
-  ): Promise<ApiResponse<{ ticket_id: string }>> {
+  async getTicket(token: string, id: string): Promise<ApiResponse<Ticket>> {
+    return this.request(`/tickets/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  // Updated to support files (FormData)
+  async createRepairTicket(token: string, data: any): Promise<ApiResponse<Ticket>> {
+    const isFormData = data instanceof FormData;
     return this.request('/tickets', {
       method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' })
+      },
+      body: isFormData ? data : JSON.stringify(data)
+    });
+  }
+
+  // === Borrows ===
+  async createBorrow(
+    token: string,
+    payload: {
+      device_id: string;
+      borrower_name: string;
+      contact_info?: string;
+      due_date: string;
+      deposit_amount?: number;
+      notes?: string;
+    }
+  ): Promise<ApiResponse<any>> {
+    return this.request('/borrows', {
+      method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async getBorrows(token: string, status?: string): Promise<ApiResponse<any[]>> {
+    const q = status ? `?status=${status}` : '';
+    return this.request(`/borrows${q}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  async returnBorrow(token: string, id: string, payload: {
+    status: 'RETURNED' | 'LOST' | 'DAMAGED'; // Fixed type
+    notes?: string;
+  }): Promise<ApiResponse<any>> {
+    return this.request(`/borrows/${id}/return`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload)
     });
   }
 
@@ -179,10 +300,51 @@ class ApiClient {
     });
   }
 
+  async createCustomer(token: string, data: Partial<Customer> & { devices?: any[] }): Promise<ApiResponse<Customer>> {
+    return this.request('/customers', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateCustomer(token: string, id: string, data: Partial<Customer> & { devices?: any[] }): Promise<ApiResponse<Customer>> {
+    return this.request(`/customers/${id}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data)
+    });
+  }
+
+  async getCustomer(token: string, id: string): Promise<ApiResponse<Customer & { Cust_Devices: { Device: Device }[] }>> {
+    return this.request(`/customers/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
   // === Devices ===
   async getDeviceBySerial(token: string, serial: string): Promise<ApiResponse<Device | null>> {
     return this.request(`/devices/serial/${encodeURIComponent(serial)}`, {
       headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  async getDevices(token: string): Promise<ApiResponse<Device[]>> {
+    return this.request('/devices', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  }
+
+  async getDeviceTypes(token: string): Promise<ApiResponse<DeviceType[]>> {
+    return this.request('/devices/types', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  }
+
+  async getAssignees(token: string): Promise<ApiResponse<User[]>> {
+    // Assuming endpoint exists or filter users
+    return this.request('/users?role=TECHNICIAN', {
+      headers: { Authorization: `Bearer ${token}` }
     });
   }
 
@@ -198,20 +360,8 @@ class ApiClient {
   }
 
   // === Settings ===
-  // const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
-  //   NEXTAUTH_URL=http://localhost:3001
-  //     //   method: "POST",
-      //   headers: {
-      //     "Content-Type": "application/json",
-      //   },
-      //   body: JSON.stringify({
-      //     email,
-      //     password: password // Changed to match schema
-      //   }),
-      // });
-
   async getSettings(token: string): Promise<ApiResponse<SettingData>> {
-    return this.request('http://localhost:3001/settings', {
+    return this.request('/settings', {
       headers: { Authorization: `Bearer ${token}` },
     });
   }
@@ -222,6 +372,49 @@ class ApiClient {
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify(data),
     });
+  }
+
+  // === Repair Logs ===
+  async getRepairLogs(token: string, ticketId: string): Promise<ApiResponse<any[]>> {
+    return this.request(`/repair-logs/ticket/${ticketId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  }
+
+  async createRepairLog(token: string, payload: {
+    ticket_id: string;
+    action_taken: string;
+    parts_used?: string;
+    cost?: number;
+  }): Promise<ApiResponse<any>> {
+    return this.request('/repair-logs', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload)
+    });
+  }
+  async get<T>(path: string): Promise<T> {
+    // Note: The existing request method returns ApiResponse<T>, but the usage expects just T or something else.
+    // The usage is: const data = await apiClient.get<any[]>("/customers");
+    // If we look at other methods, they return ApiResponse<T>.
+    // But the component expects `data`.
+    // In `page.tsx`: const data = await apiClient.get<any[]>("/customers");
+    // setCustomers(data);
+    // If `get` returns `ApiResponse`, then `data` would be `{ data: [...] }`.
+    // But `setCustomers(data)` implies `data` is the array.
+    // So `get` should probably just return the data directly OR the component usage is wrong.
+    // Let's check `fetchCustomers` in `page.tsx`.
+    // `const data = await apiClient.get<any[]>("/customers"); setCustomers(data);`
+    // This implies `get` returns the data array directly.
+    // However, existing methods like `getCustomers` return `ApiResponse`.
+
+    // Let's follow the pattern of `request`.
+    // Wait, the usage in `page.tsx` might be assuming a different `apiClient` or just wrote it quickly.
+    // I will implement `get` to return `T` (the data) to match the usage.
+
+    const res = await this.request<T>(path);
+    if (res.error) throw new Error(res.error);
+    return res.data as T;
   }
 }
 

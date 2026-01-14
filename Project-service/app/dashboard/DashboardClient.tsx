@@ -30,7 +30,7 @@ const DashboardClient = ({ statusCounts }: { statusCounts: Record<TicketStatus, 
 
   const [error, setError] = useState<string | null>(null);
 
-  const fetchTickets = async () => {
+  const fetchTickets = React.useCallback(async () => {
     if (!token) {
       setLoading(false);
       return;
@@ -39,19 +39,19 @@ const DashboardClient = ({ statusCounts }: { statusCounts: Record<TicketStatus, 
     setLoading(true);
     setError(null);
     try {
-      const startStr = startDate 
-        ? startDate.toISOString().split('T')[0] 
+      const startStr = startDate
+        ? startDate.toISOString().split('T')[0]
         : undefined;
 
-      const endStr = endDate 
-        ? endDate.toISOString().split('T')[0] 
+      const endStr = endDate
+        ? endDate.toISOString().split('T')[0]
         : undefined;
 
       const response = await apiClient.getTickets(token, {
         startDate: startStr,
         endDate: endStr,
       });
-      
+
       if (response.error) {
         setError(response.error);
         setTickets([]);
@@ -65,7 +65,7 @@ const DashboardClient = ({ statusCounts }: { statusCounts: Record<TicketStatus, 
     } finally {
       setLoading(false);
     }
-  };
+  }, [token, startDate, endDate]);
 
   useEffect(() => {
     const initializeData = async () => {
@@ -76,14 +76,45 @@ const DashboardClient = ({ statusCounts }: { statusCounts: Record<TicketStatus, 
           setError('Please login to view data');
           return;
         }
-        
+
         setToken(storedToken);
-        await fetchTickets();
+        // If we just set certain token, wait for re-render for fetchTickets to pick it up?
+        // Actually fetchTickets depends on 'token' state. 
+        // If we call it here, it uses the closure 'token' which is null!
+        // So we should strictly rely on the subsequent effect trigger when token changes.
+        // OR pass token explicitly.
+        // But fetchTickets uses state 'token'.
+        // So we should NOT call fetchTickets here if token is null in closure.
+        // But the original code called it: await fetchTickets();
+
+        // Fix: If we setToken, we expect re-render.
+        // The effect depends on fetchTickets.
+        // If token changes, fetchTickets changes -> effect runs.
+        // But initializeData sets token... 
+
+        // Let's just make fetchTickets accessible.
       }
     };
-    
+
     initializeData();
-  }, []);
+  }, []); // Wait, if I change fetchTickets deps, I must add it here!
+
+  // Splitting the effect is better.
+  useEffect(() => {
+    if (token) {
+      fetchTickets();
+    } else {
+      // Check localStorage only once? 
+      const storedToken = localStorage.getItem("token");
+      if (storedToken) {
+        setToken(storedToken);
+      } else {
+        setLoading(false); // No token found
+      }
+    }
+  }, [token, fetchTickets]); // This will loop if fetchTickets changes constantly? 
+  // fetchTickets changes when query params change. That's OK.
+
 
   const getStatusColor = (status: string) => {
     switch (status) {

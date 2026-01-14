@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -35,14 +36,35 @@ const buttonVariants = cva(
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
+  VariantProps<typeof buttonVariants> {
   asChild?: boolean;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, onClick, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
-    return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />;
+
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+      console.log('Button Clicked:', {
+        text: e.currentTarget.innerText || e.currentTarget.textContent,
+        variant,
+        size,
+        classes: className,
+        timestamp: new Date().toISOString()
+      });
+
+      if (onClick) {
+        onClick(e);
+      }
+    };
+
+    // For Slot (asChild), we pass onClick directly as it merges props, but logging might be missed if we don't wrap.
+    // However, Radix Slot merges event handlers. So passing onClick should work?
+    // But we are creating 'handleClick' here.
+    // If asChild is true, 'Comp' is Slot. Slot merges props passed to it with the child's props.
+    // So passing onClick={handleClick} to Slot works (it chains them).
+
+    return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} onClick={handleClick} {...props} />;
   },
 );
 Button.displayName = "Button";

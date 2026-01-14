@@ -25,6 +25,9 @@ model User {
   ReportedTickets    Ticket[]       @relation("UserReportedTickets")
   AssignedTickets    Ticket[]       @relation("UserAssignedTickets")
   TicketUpdates      Ticket_Update[] @relation("UserTicketUpdates")
+  RepairLogs         RepairLog[]    @relation("UserRepairLogs")
+  Attachments        Attachment[]   @relation("UserAttachments")
+  HandledBorrows     BorrowTransaction[] @relation("UserHandledBorrows")
 }
 
 model Setting {
@@ -47,6 +50,7 @@ model Customer {
   company_name      String?  @db.VarChar(100)
   contact_person    String   @db.VarChar(100)
   phone_number      String   @db.VarChar(20)
+  tax_id            String?  @db.VarChar(20)
   contact_tel       String?  @db.VarChar(20)
   contact_email     String?  @db.VarChar(100)
   contact_line_id   String?  @db.VarChar(50)
@@ -68,10 +72,12 @@ model Customer {
 }
 
 model DeviceType {
-  id          String   @id @default(cuid()) @db.VarChar(10)
+  // id uses cuid (~25 chars). Increase column length from 10 to 25 to avoid truncation errors (Prisma P2000).
+  id          String   @id @default(cuid()) @db.VarChar(25)
   device_type String   @db.VarChar(50) // e.g., "Printer", "Snooz"
   brand       String   @db.VarChar(50)
   model       String   @db.VarChar(100)
+  common_issues String? @db.Text
   created_at  DateTime @default(now()) @db.Timestamptz()
   updated_at  DateTime @updatedAt @db.Timestamptz()
 
@@ -90,11 +96,12 @@ model Device {
   updated_at            DateTime     @updatedAt @db.Timestamptz()
 
   // ลบ field device_type, device_name เดิม
-  device_type_id        String?      @db.VarChar(10)
+  device_type_id        String?      @db.VarChar(25)
   DeviceType            DeviceType?  @relation(fields: [device_type_id], references: [id])
 
   Cust_Devices          Cust_Device[]
   Tickets               Ticket[]
+  BorrowHistory         BorrowTransaction[]
   
   @@map("Device")
 }
@@ -137,10 +144,41 @@ model Ticket {
 
   assigned_to   String?
   assignee      User?    @relation("UserAssignedTickets", fields: [assigned_to], references: [user_id])
-
+  
+  // FM-TEC-101 Fields
+  accessories   String?  @db.Text
+  remark        String?  @db.Text
+  purchase_date DateTime? @db.Date
+  is_chargeable Boolean? @default(false)
+  
+  // New fields for Repair Create Form
+  sent_by       String?  @db.VarChar(100) // Leader/Person who brought item
+  received_by   String?  @db.VarChar(100) // Person who received item
+  engineer_comment String? @db.Text       // Engineer's initial comment/report
+  
+  qc_passed     Boolean? @default(false)
+  qc_by         String?  @db.VarChar(10)
+  qc_date       DateTime? @db.Timestamptz()
+  qc_note       String?  @db.Text
+  
+  TicketParts   TicketPart[]
   Updates       Ticket_Update[]
+  Attachments   Attachment[]
+  RepairLogs    RepairLog[]
 
   @@map("Ticket")
+}
+
+model TicketPart {
+  part_id       BigInt   @id @default(autoincrement())
+  part_number   String?  @db.VarChar(50)
+  description   String   @db.Text
+  quantity      Int      @default(1)
+  
+  ticket_id     String   @db.VarChar(15)
+  Ticket        Ticket   @relation(fields: [ticket_id], references: [ticket_id])
+
+  @@map("TicketPart")
 }
 
 model Ticket_Update {
@@ -157,4 +195,57 @@ model Ticket_Update {
   User           User     @relation("UserTicketUpdates", fields: [updated_by], references: [user_id])
 
   @@map("Ticket_Update")
+}
+
+model RepairLog {
+  log_id        BigInt   @id @default(autoincrement())
+  action_taken  String   @db.Text
+  parts_used    String?  @db.Text // JSON or comma-separated list of parts
+  cost          Decimal? @db.Decimal(10, 2)
+  repair_date   DateTime @default(now()) @db.Timestamptz()
+
+  ticket_id     String   @db.VarChar(15)
+  Ticket        Ticket   @relation(fields: [ticket_id], references: [ticket_id])
+
+  technician_id String   @db.VarChar(10)
+  Technician    User     @relation("UserRepairLogs", fields: [technician_id], references: [user_id])
+
+  @@map("RepairLog")
+}
+
+model Attachment {
+  attachment_id String   @id @default(cuid())
+  file_name     String   @db.VarChar(255)
+  file_url      String   @db.Text
+  file_type     String   @db.VarChar(50)
+  uploaded_at   DateTime @default(now()) @db.Timestamptz()
+
+  ticket_id     String?  @db.VarChar(15)
+  Ticket        Ticket?  @relation(fields: [ticket_id], references: [ticket_id])
+  
+  uploaded_by   String   @db.VarChar(10)
+  User          User     @relation("UserAttachments", fields: [uploaded_by], references: [user_id])
+
+  @@map("Attachment")
+}
+
+model BorrowTransaction {
+  transaction_id String    @id @default(cuid())
+  borrow_date    DateTime  @default(now()) @db.Timestamptz()
+  due_date       DateTime  @db.Date
+  return_date    DateTime? @db.Timestamptz()
+  status         String    @default("BORROWED") @db.VarChar(20) // BORROWED, RETURNED, OVERDUE, LOST
+  deposit_amount Decimal?  @db.Decimal(10, 2)
+  notes          String?   @db.Text
+
+  device_id      String    @db.VarChar(10)
+  Device         Device    @relation(fields: [device_id], references: [device_id])
+
+  borrower_name  String    @db.VarChar(100) // External borrower
+  contact_info   String?   @db.VarChar(100)
+
+  handled_by     String    @db.VarChar(10)
+  User           User      @relation("UserHandledBorrows", fields: [handled_by], references: [user_id])
+
+  @@map("BorrowTransaction")
 }
