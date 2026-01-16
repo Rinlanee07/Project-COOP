@@ -1,10 +1,14 @@
 // Repair service - uses real API calls
-import { apiClient } from '@/lib/api-client';
+import { ApiClient } from '@/lib/api-client';
+
+// Create instance locally to avoid Turbopack caching issues
+const apiClient = new ApiClient(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002');
 
 export interface RepairDetail {
   repairRequest: {
     id: number;
     ticketId: string;
+    display_id: string; // Human-readable display ID (e.g., T-2026-00001)
     printerModel: string;
     serialNumber: string;
     status: string;
@@ -16,9 +20,13 @@ export interface RepairDetail {
     sentBy?: string;
     receivedBy?: string;
     engineerComment?: string;
+    technicianName?: string;
     purchaseDate?: string | Date | null;
     isChargeable?: boolean;
+    revisionNumber?: number | null;
+    revisionDate?: string | Date | null;
     customer: {
+      // ใช้ field นี้เป็นชื่อที่แสดงบนเอกสาร (จะ map เป็นชื่อบริษัทเป็นหลัก)
       name: string;
       phone: string;
       email: string;
@@ -45,6 +53,7 @@ export interface RepairDetail {
 
 export interface RepairListItem {
   id: number;
+  ticketNumber?: string; // Display ID e.g. T-2026-00001
   printerModel: string;
   serialNumber: string;
   status: string;
@@ -157,6 +166,7 @@ const mockRepairDetails: Record<number, RepairDetail> = {
     repairRequest: {
       id: 6544,
       ticketId: 'T6544',
+      display_id: 'T-2024-06544',
       printerModel: 'Epson TM-T88VI',
       serialNumber: 'SN123456789',
       status: 'New',
@@ -183,6 +193,7 @@ const mockRepairDetails: Record<number, RepairDetail> = {
     repairRequest: {
       id: 6543,
       ticketId: 'T6543',
+      display_id: 'T-2024-06543',
       printerModel: 'HP LaserJet Pro',
       serialNumber: 'HP-ABC123',
       status: 'Pending',
@@ -202,6 +213,7 @@ const mockRepairDetails: Record<number, RepairDetail> = {
     repairRequest: {
       id: 6542,
       ticketId: 'T6542',
+      display_id: 'T-2024-06542',
       printerModel: 'Canon PIXMA TS3300',
       serialNumber: 'CN-X9Y8Z7',
       status: 'Closed',
@@ -221,6 +233,7 @@ const mockRepairDetails: Record<number, RepairDetail> = {
     repairRequest: {
       id: 6541,
       ticketId: 'T6541',
+      display_id: 'T-2024-06541',
       printerModel: 'Brother HL-L2300D',
       serialNumber: 'BR-778899',
       status: 'In Progress',
@@ -302,14 +315,14 @@ export const repairService = {
     try {
       console.log('[RepairService] Calling real API - GET /tickets');
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      
+
       if (!token) {
         console.error('[RepairService] No token found');
         return { success: false, data: [], message: 'No authentication token' };
       }
 
       const result = await apiClient.getTickets(token);
-      
+
       if (result.error) {
         console.error('[RepairService] API Error:', result.error);
         // Provide more user-friendly error messages
@@ -329,8 +342,9 @@ export const repairService = {
       // Transform Ticket[] to RepairListItem[]
       const repairs: RepairListItem[] = result.data.map((ticket: any) => ({
         id: parseInt(ticket.ticket_id?.replace('T', '') || '0') || 0,
-        printerModel: ticket.Device?.DeviceType 
-          ? `${ticket.Device.DeviceType.brand} ${ticket.Device.DeviceType.model}` 
+        ticketNumber: ticket.ticket_running_no || ticket.ticket_id || '-', // Display ID
+        printerModel: ticket.Device?.DeviceType
+          ? `${ticket.Device.DeviceType.brand} ${ticket.Device.DeviceType.model}`
           : ticket.Device?.serial_number || 'Unknown Device',
         serialNumber: ticket.Device?.serial_number || '-',
         status: ticket.status || 'New',
@@ -343,7 +357,7 @@ export const repairService = {
       }));
 
       console.log('[RepairService] Transformed repairs:', repairs.length);
-      
+
       return {
         success: true,
         data: repairs,
@@ -372,10 +386,10 @@ export const repairService = {
     if (USE_MOCK_DATA) {
       console.log('[RepairService] Using MOCK data - getById()', id);
       await new Promise((resolve) => setTimeout(resolve, 300));
-      
+
       const detail = mockRepairDetails[id];
       console.log('[RepairService] Mock detail found:', !!detail);
-      
+
       if (!detail) {
         console.warn('[RepairService] Repair not found:', id);
         return {
@@ -383,7 +397,7 @@ export const repairService = {
           error: 'ไม่พบข้อมูลงานซ่อม',
         };
       }
-      
+
       return {
         success: true,
         data: detail,
@@ -393,12 +407,12 @@ export const repairService = {
     try {
       console.log('[RepairService] Calling real API - GET /tickets/' + id);
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      
+
       if (!token) {
         console.error('[RepairService] No token found');
         return { success: false, error: 'Unauthorized - กรุณาเข้าสู่ระบบอีกครั้ง' };
       }
-      
+
       console.log('[RepairService] Token found, length:', token.length);
       console.log('[RepairService] Token preview:', token.substring(0, 20) + '...');
 
@@ -406,7 +420,7 @@ export const repairService = {
       // First, get all tickets and find the one matching the numeric ID
       console.log('[RepairService] Step 1: Fetching all tickets...');
       const allTicketsResult = await apiClient.getTickets(token);
-      
+
       if (allTicketsResult.error || !allTicketsResult.data) {
         console.error('[RepairService] Failed to fetch tickets list:', allTicketsResult.error);
         // If unauthorized, return specific error
@@ -446,7 +460,7 @@ export const repairService = {
 
       // Now get full ticket details using ticket_id
       const result = await apiClient.getTicket(currentToken, foundTicket.ticket_id);
-      
+
       if (result.error) {
         console.error('[RepairService] API Error:', result.error);
         // If unauthorized, return specific error
@@ -461,19 +475,20 @@ export const repairService = {
       }
 
       const ticket = result.data as any; // API returns extended Ticket with relations
-      
+
       // Get latest repair log for repair date
-      const latestRepairLog = ticket.RepairLogs && ticket.RepairLogs.length > 0 
-        ? ticket.RepairLogs[0] 
+      const latestRepairLog = ticket.RepairLogs && ticket.RepairLogs.length > 0
+        ? ticket.RepairLogs[0]
         : null;
 
       // Transform Ticket to RepairDetail
       const repairDetail: RepairDetail = {
         repairRequest: {
           id: parseInt(ticket.ticket_id?.replace('T', '') || String(id)) || id,
-          ticketId: ticket.ticket_id || '',
-          printerModel: ticket.Device?.DeviceType 
-            ? `${ticket.Device.DeviceType.brand} ${ticket.Device.DeviceType.model}` 
+          ticketId: ticket.ticket_running_no || ticket.ticket_id || '',
+          display_id: ticket.ticket_running_no || ticket.ticket_id || '', // Display ID (e.g., T-2026-00001)
+          printerModel: ticket.Device?.DeviceType
+            ? `${ticket.Device.DeviceType.brand} ${ticket.Device.DeviceType.model}`
             : ticket.Device?.serial_number || 'Unknown Device',
           serialNumber: ticket.Device?.serial_number || '-',
           status: ticket.status || 'New',
@@ -487,8 +502,11 @@ export const repairService = {
           engineerComment: ticket.engineer_comment || '',
           purchaseDate: ticket.purchase_date || null,
           isChargeable: ticket.is_chargeable || false,
+          revisionNumber: ticket.revision_number || null,
+          revisionDate: ticket.revision_date || null,
           customer: {
-            name: ticket.Customer?.customer_name || '-',
+            // ให้ชื่อที่ใช้ในเอกสารเป็น "Shop Name" ก่อน, ถ้าไม่มีค่อย fallback เป็นชื่อบริษัท/ชื่อลูกค้า
+            name: ticket.Customer?.shop_name || ticket.Customer?.company_name || ticket.Customer?.customer_name || '-',
             phone: ticket.Customer?.phone_number || '-',
             email: ticket.Customer?.contact_email || '-',
             taxId: ticket.Customer?.tax_id || '',
@@ -539,7 +557,7 @@ export const repairService = {
       };
 
       console.log('[RepairService] Transformed repair detail:', repairDetail);
-      
+
       return {
         success: true,
         data: repairDetail,
@@ -549,6 +567,126 @@ export const repairService = {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Network error',
+      };
+    }
+  },
+
+  // Update repair ticket by ID
+  async update(id: number, updateData: {
+    customer_id?: string;
+    device_id?: string;
+    description?: string;
+    accessories?: string;
+    remark?: string;
+    sentBy?: string;
+    receivedBy?: string;
+    engineerComment?: string;
+    technicianName?: string | null;
+    purchaseDate?: string | null;
+    dueDate?: string | null;
+    priority?: string;
+    isChargeable?: boolean;
+    parts?: Array<{
+      part_number?: string;
+      description: string;
+      quantity: number;
+    }>;
+  }, files?: File[]): Promise<{ success: boolean; data?: RepairDetail; error?: string }> {
+    try {
+      console.log('[RepairService] Updating ticket:', id);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+
+      if (!token) {
+        console.error('[RepairService] No token found');
+        return { success: false, error: 'Unauthorized - กรุณาเข้าสู่ระบบอีกครั้ง' };
+      }
+
+      // First, get all tickets to find the ticket_id
+      const allTicketsResult = await apiClient.getTickets(token);
+
+      if (allTicketsResult.error || !allTicketsResult.data) {
+        console.error('[RepairService] Failed to fetch tickets list:', allTicketsResult.error);
+        return { success: false, error: allTicketsResult.error || 'Failed to fetch tickets' };
+      }
+
+      // Find ticket where numeric ID matches
+      const foundTicket = allTicketsResult.data.find((t: any) => {
+        const ticketNumericId = parseInt(t.ticket_id?.replace('T', '') || '0');
+        return ticketNumericId === id;
+      });
+
+      if (!foundTicket) {
+        console.warn('[RepairService] Ticket not found with ID:', id);
+        return { success: false, error: 'ไม่พบข้อมูลงานซ่อม' };
+      }
+
+      // Prepare payload
+      let payload: any;
+
+      // If files are provided, use FormData
+      if (files && files.length > 0) {
+        console.log('[RepairService] Creating FormData with files');
+        const formData = new FormData();
+
+        // Add all update data fields
+        if (updateData.customer_id !== undefined) formData.append('customer_id', updateData.customer_id);
+        if (updateData.device_id !== undefined) formData.append('device_id', updateData.device_id);
+        if (updateData.description !== undefined) formData.append('description', updateData.description);
+        if (updateData.accessories !== undefined) formData.append('accessories', updateData.accessories);
+        if (updateData.remark !== undefined) formData.append('remark', updateData.remark);
+        if (updateData.sentBy !== undefined) formData.append('sent_by', updateData.sentBy);
+        if (updateData.receivedBy !== undefined) formData.append('received_by', updateData.receivedBy);
+        if (updateData.engineerComment !== undefined) formData.append('engineer_comment', updateData.engineerComment);
+        if (updateData.technicianName !== undefined && updateData.technicianName !== null) formData.append('technician_name', updateData.technicianName);
+        if (updateData.isChargeable !== undefined) formData.append('is_chargeable', String(updateData.isChargeable));
+        if (updateData.purchaseDate !== undefined && updateData.purchaseDate !== null) formData.append('purchase_date', updateData.purchaseDate);
+        if (updateData.dueDate !== undefined && updateData.dueDate !== null) formData.append('due_date', updateData.dueDate);
+        if (updateData.priority !== undefined) formData.append('priority', updateData.priority);
+        if (updateData.parts !== undefined) formData.append('parts', JSON.stringify(updateData.parts));
+
+        // Add files
+        files.forEach((file) => {
+          formData.append('files', file);
+        });
+
+        payload = formData;
+      } else {
+        // No files, use JSON payload with snake_case for backend
+        payload = {};
+        if (updateData.customer_id !== undefined) payload.customer_id = updateData.customer_id;
+        if (updateData.device_id !== undefined) payload.device_id = updateData.device_id;
+        if (updateData.description !== undefined) payload.description = updateData.description;
+        if (updateData.accessories !== undefined) payload.accessories = updateData.accessories;
+        if (updateData.remark !== undefined) payload.remark = updateData.remark;
+        if (updateData.sentBy !== undefined) payload.sent_by = updateData.sentBy;
+        if (updateData.receivedBy !== undefined) payload.received_by = updateData.receivedBy;
+        if (updateData.engineerComment !== undefined) payload.engineer_comment = updateData.engineerComment;
+        if (updateData.isChargeable !== undefined) payload.is_chargeable = updateData.isChargeable;
+        if (updateData.purchaseDate !== undefined) payload.purchase_date = updateData.purchaseDate;
+        if (updateData.dueDate !== undefined) payload.due_date = updateData.dueDate;
+        if (updateData.priority !== undefined) payload.priority = updateData.priority;
+        if (updateData.parts !== undefined) payload.parts = updateData.parts;
+      }
+
+      console.log('[RepairService] Update payload type:', files && files.length > 0 ? 'FormData' : 'JSON');
+
+      // Call update API
+      const result = await apiClient.updateTicket(token, foundTicket.ticket_id, payload);
+
+      if (result.error) {
+        console.error('[RepairService] Update failed:', result.error);
+        return { success: false, error: result.error };
+      }
+
+      console.log('[RepairService] Update successful');
+
+      // Fetch updated detail
+      return this.getById(id);
+    } catch (error) {
+      console.error('[RepairService] Update exception:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update ticket',
       };
     }
   },

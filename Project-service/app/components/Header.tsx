@@ -1,7 +1,7 @@
 // components/Header.tsx
 "use client";
 
-import { Settings, Search, Plus, HelpCircle } from 'lucide-react';
+import { Settings, Plus, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -35,7 +35,6 @@ const Header = () => {
   const [user, setUser] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const { toast } = useToast();
   const { t } = useLanguageEnhanced();
   const router = useRouter();
@@ -49,12 +48,6 @@ const Header = () => {
     if (pathname === '/dashboard/status-tracking') return t('status_tracking');
     if (pathname === '/settings') return t('settings');
     return t('dashboard');
-  };
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Implement search functionality
-    console.log('Search:', searchQuery);
   };
 
   useEffect(() => {
@@ -101,10 +94,10 @@ const Header = () => {
 
   const initials = user
     ? user.name
-        .split(' ')
-        .filter(part => part.length > 0)
-        .map(part => part[0].toUpperCase())
-        .join('')
+      .split(' ')
+      .filter(part => part.length > 0)
+      .map(part => part[0].toUpperCase())
+      .join('')
     : 'JD';
 
   return (
@@ -152,21 +145,8 @@ const Header = () => {
             </div>
           </div>
 
-          {/* Right: Search, Actions, User Menu */}
+          {/* Right: Actions, User Menu */}
           <div className="flex items-center gap-4">
-            {/* Search Bar */}
-            <form onSubmit={handleSearch} className="hidden md:flex items-center">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder={t('search_placeholder')}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2 w-64 border border-input rounded-lg text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
-                />
-              </div>
-            </form>
 
             {/* Action Buttons */}
             <div className="flex items-center gap-3">
@@ -176,7 +156,7 @@ const Header = () => {
                   <span>{t('create_new')}</span>
                 </Button>
               </Link>
-              
+
               {/* Help Icon */}
               <Button
                 variant="ghost"
@@ -188,8 +168,8 @@ const Header = () => {
 
               {/* Theme Toggle */}
               <div className="hidden sm:block">
-                <ThemeToggle 
-                  variant="icon" 
+                <ThemeToggle
+                  variant="icon"
                   size="md"
                   className="text-primary hover:bg-accent"
                 />
@@ -197,8 +177,8 @@ const Header = () => {
 
               {/* Language Selector */}
               <div className="hidden sm:block">
-                <LanguageSelector 
-                  variant="dropdown" 
+                <LanguageSelector
+                  variant="dropdown"
                   size="md"
                   showFlag={true}
                   showLabel={false}
@@ -251,26 +231,26 @@ const Header = () => {
                   {/* Mobile Theme and Language Controls */}
                   <div className="sm:hidden">
                     <DropdownMenuSeparator />
-                    
+
                     <div className="px-3 py-2">
                       <p className="text-xs font-medium text-muted-foreground mb-2">{t('preferences')}</p>
-                      
+
                       {/* Theme Toggle for Mobile */}
                       <div className="flex items-center justify-between py-1">
                         <span className="text-sm text-foreground">{t('theme')}</span>
-                        <ThemeToggle 
-                          variant="dropdown" 
+                        <ThemeToggle
+                          variant="dropdown"
                           size="sm"
                           showLabel={false}
                           className="text-primary"
                         />
                       </div>
-                      
+
                       {/* Language Selector for Mobile */}
                       <div className="flex items-center justify-between py-1">
                         <span className="text-sm text-foreground">{t('language')}</span>
-                        <LanguageSelector 
-                          variant="dropdown" 
+                        <LanguageSelector
+                          variant="dropdown"
                           size="sm"
                           showFlag={true}
                           showLabel={false}

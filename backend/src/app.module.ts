@@ -12,6 +12,8 @@ import { BorrowModule } from './borrow/borrow.module';
 import { DeviceModule } from './device/device.module';
 import { RepairLogModule } from './repair-log/repair-log.module';
 import { CustomerModule } from './customer/customer.module';
+import { TechnicalReportModule } from './technical-report/technical-report.module';
+import { PartsModule } from './parts/parts.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { CustomerModule } from './customer/customer.module';
     DeviceModule,
     RepairLogModule,
     CustomerModule,
+    TechnicalReportModule,
+    PartsModule,
   ],
   controllers: [],
   providers: [],

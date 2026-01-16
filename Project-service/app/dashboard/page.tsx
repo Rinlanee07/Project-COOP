@@ -4,7 +4,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import DashboardClient from "./DashboardClient";
-import { apiClient } from "@/lib/api-client";
+import { ApiClient } from "@/lib/api-client";
+const apiClient = new ApiClient(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002');
 
 // Frontend Status types
 type FrontendStatus = 'New' | 'In Progress' | 'Pending' | 'Resolved' | 'Closed';
@@ -65,7 +66,7 @@ const DashboardPage = () => {
     const fetchStatusCounts = async () => {
       try {
         const response = await apiClient.getTickets(token!, {});
-        
+
         if (response.error) {
           console.error("Failed to fetch repair requests:", response.error);
           if (response.error === 'Unauthorized') {

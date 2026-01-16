@@ -8,7 +8,8 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { th } from 'date-fns/locale';
 import DatePicker from 'react-datepicker';
 import type { Ticket, TicketStatus, TicketCounts } from "../../types/ticket";
-import { apiClient } from "@/lib/api-client";
+import { ApiClient } from "@/lib/api-client";
+const apiClient = new ApiClient(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002');
 import {
   Wrench,
   Plus,

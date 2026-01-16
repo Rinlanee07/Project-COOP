@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiClient } from "@/lib/api-client";
+import { ApiClient } from "@/lib/api-client";
+const apiClient = new ApiClient(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002');
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

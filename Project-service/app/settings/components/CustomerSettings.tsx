@@ -11,7 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/components/ui/use-toast';
 import { Save, Plus, X } from 'lucide-react';
-import { apiClient } from '@/lib/api-client';
+import { ApiClient } from '@/lib/api-client';
+const apiClient = new ApiClient(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002');
 
 type AddressFields = {
   houseNumber: string;
@@ -31,6 +32,7 @@ type CustomerData = {
     type: string;
     serial: string;
     brand: string;
+    quantity: number;
   }>;
   shop_address: AddressFields;
   company_name: string | null;
@@ -63,7 +65,7 @@ export default function CustomerSettings() {
     customer_name: '',
     shop_name: '',
     devices: [
-      { type: '', serial: '', brand: '' },
+      { type: '', serial: '', brand: '', quantity: 1 },
     ],
     shop_address: { ...emptyAddress },
     company_name: '',
@@ -156,11 +158,11 @@ export default function CustomerSettings() {
       setCustomer((prev) => {
         const companyHasData = hasAddressData(prev.company_address);
         const shopHasData = hasAddressData(prev.shop_address);
-        
+
         // If company address has data, sync shop_address to company_address
         if (companyHasData) {
           return { ...prev, shop_address: { ...prev.company_address } };
-        } 
+        }
         // If company is empty but shop has data, sync company_address to shop_address
         // This preserves the shop address data instead of losing it
         else if (shopHasData) {
@@ -180,7 +182,7 @@ export default function CustomerSettings() {
 
   const handleDeviceChange = (
     index: number,
-    field: 'type' | 'serial' | 'brand',
+    field: 'type' | 'serial' | 'brand' | 'quantity',
     value: string
   ) => {
     setCustomer((prev) => {
@@ -193,7 +195,7 @@ export default function CustomerSettings() {
   const addDeviceRow = () => {
     setCustomer((prev) => ({
       ...prev,
-      devices: [...prev.devices, { type: '', serial: '', brand: '' }],
+      devices: [...prev.devices, { type: '', serial: '', brand: '', quantity: 1 }],
     }));
   };
 
@@ -214,12 +216,12 @@ export default function CustomerSettings() {
         ...prev,
         [type]: { ...prev[type], [field]: value },
       };
-      
+
       // If sameAddress is enabled and company_address changed, sync shop_address
       if (sameAddress && type === 'company_address') {
         updated.shop_address = { ...updated.company_address };
       }
-      
+
       return updated;
     });
   };
@@ -266,18 +268,18 @@ export default function CustomerSettings() {
       }
 
       // Format address data - backend expects JSON strings
-      const hasShopAddress = customer.shop_address.houseNumber || 
-        customer.shop_address.soi || 
-        customer.shop_address.road || 
-        customer.shop_address.subdistrict || 
-        customer.shop_address.district || 
+      const hasShopAddress = customer.shop_address.houseNumber ||
+        customer.shop_address.soi ||
+        customer.shop_address.road ||
+        customer.shop_address.subdistrict ||
+        customer.shop_address.district ||
         customer.shop_address.provinceId;
 
-      const hasCompanyAddress = customer.company_address.houseNumber || 
-        customer.company_address.soi || 
-        customer.company_address.road || 
-        customer.company_address.subdistrict || 
-        customer.company_address.district || 
+      const hasCompanyAddress = customer.company_address.houseNumber ||
+        customer.company_address.soi ||
+        customer.company_address.road ||
+        customer.company_address.subdistrict ||
+        customer.company_address.district ||
         customer.company_address.provinceId;
 
       const customerData: any = {
@@ -308,12 +310,12 @@ export default function CustomerSettings() {
       }
 
       const result = await apiClient.createCustomer(token, customerData);
-      
+
       console.log('API Response:', result);
 
       if (result.error) {
-        const errorMessage = typeof result.error === 'string' 
-          ? result.error 
+        const errorMessage = typeof result.error === 'string'
+          ? result.error
           : 'Failed to save customer';
         console.error('API Error:', errorMessage);
         throw new Error(errorMessage);
@@ -335,7 +337,7 @@ export default function CustomerSettings() {
         customer_name: '',
         shop_name: '',
         devices: [
-          { type: '', serial: '', brand: '' },
+          { type: '', serial: '', brand: '', quantity: 1 },
         ],
         shop_address: { ...emptyAddress },
         company_name: '',
@@ -373,6 +375,16 @@ export default function CustomerSettings() {
                 onChange={(e) => handleCustomerChange('customer_name', e.target.value)}
                 className="border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent"
                 placeholder="Enter customer name"
+              />
+            </div>
+
+            <div>
+              <Label className="text-[#333333] font-medium mb-2 block">Company Name</Label>
+              <Input
+                value={customer.company_name || ''}
+                onChange={(e) => handleCustomerChange('company_name', e.target.value)}
+                className="border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent"
+                placeholder="Enter company name (optional)"
               />
             </div>
 
@@ -752,73 +764,91 @@ export default function CustomerSettings() {
                 return (
                   <div
                     key={index}
-                    className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_auto] gap-4 items-end bg-[#F5F7FA] p-3 rounded-lg border border-[#E8EBF5]"
+                    className="relative p-4 border border-[#E8EBF5] rounded-lg bg-[#F5F7FA]"
                   >
-                    <div>
-                      <Label className="text-[#333333] font-medium mb-2 block">Type</Label>
-                      <Select
-                        instanceId={`device-type-${deviceTypeSelectId}-${index}`}
-                        value={selectedType}
-                        onChange={(option) =>
-                          handleDeviceChange(index, 'type', option?.value || '')
-                        }
-                        options={DEVICE_TYPE_OPTIONS}
-                        placeholder="Select type..."
-                        isSearchable
-                        className="text-sm"
-                        classNames={{
-                          control: () =>
-                            'rounded-lg border border-[#E8EBF5] bg-white shadow-sm hover:border-[#D7B55A]',
-                          menu: () =>
-                            'rounded-lg border border-[#E8EBF5] bg-white shadow-lg',
-                          option: ({ isFocused, isSelected }) =>
-                            `px-3 py-2 ${
-                              isSelected
-                                ? 'bg-[#092A6D] text-white'
-                                : isFocused
-                                  ? 'bg-[#E8EBF5] text-[#092A6D]'
-                                  : 'text-[#333333]'
-                            }`,
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-[#333333] font-medium mb-2 block">
-                        Serial Number
-                      </Label>
-                      <Input
-                        value={device.serial}
-                        onChange={(e) =>
-                          handleDeviceChange(index, 'serial', e.target.value)
-                        }
-                        className="border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent"
-                        placeholder="Enter serial number"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-[#333333] font-medium mb-2 block">
-                        Brand
-                      </Label>
-                      <Input
-                        value={device.brand}
-                        onChange={(e) =>
-                          handleDeviceChange(index, 'brand', e.target.value)
-                        }
-                        className="border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent"
-                        placeholder="Enter brand"
-                      />
-                    </div>
-                    <div className="flex justify-end md:justify-center">
+                    {/* Delete Button - Top Right */}
+                    {customer.devices.length > 1 && (
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
                         onClick={() => removeDeviceRow(index)}
-                        className="text-red-500 hover:text-red-600"
-                        disabled={customer.devices.length === 1}
+                        className="absolute top-2 right-2 text-red-500 hover:text-red-600 hover:bg-red-50"
                       >
                         <X className="w-4 h-4" />
                       </Button>
+                    )}
+
+                    {/* Device Form Fields */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pr-10">
+                      <div>
+                        <Label className="text-[#333333] font-medium mb-2 block">Type</Label>
+                        <Select
+                          instanceId={`device-type-${deviceTypeSelectId}-${index}`}
+                          value={selectedType}
+                          onChange={(option) =>
+                            handleDeviceChange(index, 'type', option?.value || '')
+                          }
+                          options={DEVICE_TYPE_OPTIONS}
+                          placeholder="Select type..."
+                          isSearchable
+                          className="text-sm"
+                          classNames={{
+                            control: () =>
+                              'rounded-lg border border-[#E8EBF5] bg-white shadow-sm hover:border-[#D7B55A]',
+                            menu: () =>
+                              'rounded-lg border border-[#E8EBF5] bg-white shadow-lg',
+                            option: ({ isFocused, isSelected }) =>
+                              `px-3 py-2 ${isSelected
+                                ? 'bg-[#092A6D] text-white'
+                                : isFocused
+                                  ? 'bg-[#E8EBF5] text-[#092A6D]'
+                                  : 'text-[#333333]'
+                              }`,
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[#333333] font-medium mb-2 block">
+                          Serial Number
+                        </Label>
+                        <Input
+                          value={device.serial}
+                          onChange={(e) =>
+                            handleDeviceChange(index, 'serial', e.target.value)
+                          }
+                          className="border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent"
+                          placeholder="Enter serial number"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[#333333] font-medium mb-2 block">
+                          Brand
+                        </Label>
+                        <Input
+                          value={device.brand}
+                          onChange={(e) =>
+                            handleDeviceChange(index, 'brand', e.target.value)
+                          }
+                          className="border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent"
+                          placeholder="Enter brand"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[#333333] font-medium mb-2 block">
+                          จำนวน (Quantity)
+                        </Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={device.quantity}
+                          onChange={(e) =>
+                            handleDeviceChange(index, 'quantity', e.target.value)
+                          }
+                          className="border-[#E8EBF5] focus:ring-2 focus:ring-[#D7B55A] focus:border-transparent"
+                          placeholder="1"
+                        />
+                      </div>
                     </div>
                   </div>
                 );
@@ -841,4 +871,3 @@ export default function CustomerSettings() {
     </div>
   );
 }
-

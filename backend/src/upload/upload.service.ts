@@ -15,13 +15,13 @@ export class UploadService {
       'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
       'application/pdf'
     ];
-    
+
     const fileExt = file.originalname.split('.').pop()?.toLowerCase();
     const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'];
-    
+
     const isValidMimeType = allowedTypes.includes(file.mimetype);
     const isValidExtension = fileExt && allowedExtensions.includes(fileExt);
-    
+
     if (!isValidMimeType && !isValidExtension) {
       throw new BadRequestException('Invalid file type. Allowed types: JPG, PNG, GIF, WEBP, PDF');
     }
@@ -47,9 +47,10 @@ export class UploadService {
       // Write file
       await writeFile(filePath, file.buffer);
 
-      // Return file URL
-      const fileUrl = `/uploads/${fileName}`;
-      
+      // Return full file URL with backend host
+      const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+      const fileUrl = `${backendUrl}/uploads/${fileName}`;
+
       return {
         url: fileUrl,
         fileName: file.originalname,

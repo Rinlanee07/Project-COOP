@@ -3,12 +3,14 @@
 import { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import CustomerSettings from './components/CustomerSettings';
-import DisplaySettings from './components/DisplaySettings';
-import { Users, Monitor } from 'lucide-react';
+import CustomerInformation from './components/CustomerInformation';
+import TechnicalReport from './components/TechnicalReport';
+import Parts from './components/Parts';
+import { Users, Wrench, List, Settings } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
-type SettingsTab = 'customer' | 'display';
+type SettingsTab = 'customer' | 'customer-info' | 'technical' | 'parts';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('customer');
@@ -17,12 +19,22 @@ export default function SettingsPage() {
     {
       id: 'customer' as SettingsTab,
       icon: Users,
-      tooltip: 'หน้านี้ใช้สำหรับจัดการข้อมูลลูกค้า ตั้งค่าและแก้ไขข้อมูลส่วนตัว ร้านค้า และที่อยู่',
+      tooltip: 'หน้านี้ใช้สำหรับเพิ่มข้อมูลลูกค้าใหม่ ตั้งค่าและบันทึกข้อมูลส่วนตัว ร้านค้า และที่อยู่',
     },
     {
-      id: 'display' as SettingsTab,
-      icon: Monitor,
-      tooltip: 'หน้านี้ใช้สำหรับจัดการการตั้งค่าจอแสดงผลและการแสดงผลต่างๆ',
+      id: 'customer-info' as SettingsTab,
+      icon: List,
+      tooltip: 'หน้านี้ใช้สำหรับดูรายการลูกค้าทั้งหมด คลิกเพื่อดูรายละเอียด และจัดการข้อมูลลูกค้า',
+    },
+    {
+      id: 'technical' as SettingsTab,
+      icon: Wrench,
+      tooltip: 'หน้านี้ใช้สำหรับจัดการข้อมูลช่างเทคนิค เพิ่ม แก้ไข และลบข้อมูลช่างเทคนิค',
+    },
+    {
+      id: 'parts' as SettingsTab,
+      icon: Settings,
+      tooltip: 'หน้านี้ใช้สำหรับจัดการข้อมูลอุปกรณ์อะไหล่ เพิ่ม แก้ไข และลบข้อมูล PART NO. และ Description',
     },
   ];
 
@@ -62,7 +74,9 @@ export default function SettingsPage() {
         {/* Content Area */}
         <div className="flex-1">
           {activeTab === 'customer' && <CustomerSettings />}
-          {activeTab === 'display' && <DisplaySettings />}
+          {activeTab === 'customer-info' && <CustomerInformation />}
+          {activeTab === 'technical' && <TechnicalReport />}
+          {activeTab === 'parts' && <Parts />}
         </div>
       </div>
     </DashboardLayout>

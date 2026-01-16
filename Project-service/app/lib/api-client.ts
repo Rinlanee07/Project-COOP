@@ -90,7 +90,7 @@ export interface SettingResponse {
   message: string;
 }
 
-class ApiClient {
+export class ApiClient {
   private baseURL: string;
 
   constructor(baseURL: string = API_BASE_URL) {
@@ -130,14 +130,14 @@ class ApiClient {
       if (logHeaders['Authorization']) {
         logHeaders['Authorization'] = 'Bearer ***';
       }
-      console.log('[ApiClient] Making request:', { 
-        method: options.method || 'GET', 
-        url, 
+      console.log('[ApiClient] Making request:', {
+        method: options.method || 'GET',
+        url,
         endpoint,
         baseURL: this.baseURL,
         hasAuth: !!headers['Authorization']
       });
-      
+
       const response = await fetch(url, config);
       const contentType = response.headers.get('content-type');
       const data = contentType?.includes('application/json')
@@ -146,15 +146,15 @@ class ApiClient {
 
       if (!response.ok) {
         const errorMessage = data?.error || data?.message || `HTTP ${response.status}: ${response.statusText}`;
-        console.error('[ApiClient] Request failed:', { 
-          url, 
-          status: response.status, 
+        console.error('[ApiClient] Request failed:', {
+          url,
+          status: response.status,
           statusText: response.statusText,
           error: errorMessage,
           hasAuth: !!headers['Authorization'],
           responseData: data
         });
-        
+
         // If 401 Unauthorized, clear token and suggest re-login
         if (response.status === 401 && typeof window !== 'undefined') {
           console.warn('[ApiClient] 401 Unauthorized - Token may be expired or invalid');
@@ -162,7 +162,7 @@ class ApiClient {
           localStorage.removeItem('token');
           localStorage.removeItem('user');
         }
-        
+
         return {
           error: errorMessage,
         };
@@ -186,15 +186,15 @@ class ApiClient {
       } else if (error instanceof Error) {
         errorMessage = error.message;
       }
-      
-      console.error('[ApiClient] Request exception:', { 
+
+      console.error('[ApiClient] Request exception:', {
         baseURL: this.baseURL,
-        url, 
+        url,
         endpoint,
         error: errorMessage,
         originalError: error instanceof Error ? error.message : String(error)
       });
-      
+
       return {
         error: errorMessage,
       };
@@ -253,6 +253,17 @@ class ApiClient {
         ...(isFormData ? {} : { 'Content-Type': 'application/json' })
       },
       body: isFormData ? data : JSON.stringify(data)
+    });
+  }
+
+  async updateTicket(token: string, ticketId: string, data: any): Promise<ApiResponse<Ticket>> {
+    return this.request(`/tickets/${ticketId}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
     });
   }
 
@@ -319,6 +330,13 @@ class ApiClient {
   async getCustomer(token: string, id: string): Promise<ApiResponse<Customer & { Cust_Devices: { Device: Device }[] }>> {
     return this.request(`/customers/${id}`, {
       headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  async deleteCustomer(token: string, id: string): Promise<ApiResponse<{ message: string }>> {
+    return this.request(`/customers/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
     });
   }
 
@@ -393,6 +411,64 @@ class ApiClient {
       body: JSON.stringify(payload)
     });
   }
+  async getTechnicalReports(token: string): Promise<ApiResponse<any[]>> {
+    return this.request('/technical-reports', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  }
+
+  async createTechnicalReport(token: string, data: { name: string; phone: string }): Promise<ApiResponse<any>> {
+    return this.request('/technical-reports', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateTechnicalReport(token: string, id: string, data: { name?: string; phone?: string }): Promise<ApiResponse<any>> {
+    return this.request(`/technical-reports/${id}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deleteTechnicalReport(token: string, id: string): Promise<ApiResponse<any>> {
+    return this.request(`/technical-reports/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  }
+
+  async getParts(token: string): Promise<ApiResponse<any[]>> {
+    return this.request('/parts', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  }
+
+  async createPart(token: string, data: { part_no: string; description: string }): Promise<ApiResponse<any>> {
+    return this.request('/parts', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updatePart(token: string, id: string, data: { part_no?: string; description?: string }): Promise<ApiResponse<any>> {
+    return this.request(`/parts/${id}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deletePart(token: string, id: string): Promise<ApiResponse<any>> {
+    return this.request(`/parts/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  }
+
   async get<T>(path: string): Promise<T> {
     // Note: The existing request method returns ApiResponse<T>, but the usage expects just T or something else.
     // The usage is: const data = await apiClient.get<any[]>("/customers");
@@ -418,5 +494,7 @@ class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient();
-export default apiClient;
+// ❌ REMOVED: Singleton export causes Turbopack caching issues
+// Export class only - create instances where needed
+// export const apiClient = new ApiClient();
+// export default apiClient;

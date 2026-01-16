@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Select from "react-select";
 import { useToast } from "@/components/ui/use-toast";
-import { apiClient } from "@/lib/api-client";
+import { ApiClient } from "@/lib/api-client";
+const apiClient = new ApiClient(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002');
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -19,6 +20,8 @@ export default function CreateRepair() {
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const [customerDevices, setCustomerDevices] = useState<any[]>([]); // Devices for selected customer
+  const [technicalReports, setTechnicalReports] = useState<any[]>([]); // Technical reports for dropdown
+  const [partsList, setPartsList] = useState<any[]>([]); // Parts from database for dropdown
 
   // Form State - Basic Info
   const [notificationDate, setNotificationDate] = useState<string>("");
@@ -47,7 +50,7 @@ export default function CreateRepair() {
   const [parts, setParts] = useState<Array<{ part_number: string; description: string; quantity: number }>>([]);
 
   // Engineer Report
-  const [engineerName, setEngineerName] = useState("");
+  const [selectedTechnician, setSelectedTechnician] = useState<any>(null);
   const [repairDate, setRepairDate] = useState<string>("");
   const [purchaseDate, setPurchaseDate] = useState<string>("");
   const [contractDate, setContractDate] = useState<string>("");
@@ -66,12 +69,30 @@ export default function CreateRepair() {
 
       try {
         const custRes = await apiClient.getCustomers(token);
+        const techRes = await apiClient.getTechnicalReports(token);
+        const partsRes = await apiClient.getParts(token);
 
         if (custRes.data) {
           setCustomers(custRes.data.map(c => ({
             value: c.customer_id,
             label: c.customer_name,
             original: c
+          })));
+        }
+
+        if (techRes.data) {
+          setTechnicalReports(techRes.data.map((t: any) => ({
+            value: t.id,
+            label: t.name,
+            original: t
+          })));
+        }
+
+        if (partsRes.data) {
+          setPartsList(partsRes.data.map((p: any) => ({
+            value: p.id,
+            label: `${p.part_no} - ${p.description}`,
+            original: p
           })));
         }
       } catch (error) {
@@ -90,35 +111,35 @@ export default function CreateRepair() {
     if (selectedCustomer?.original) {
       const customer = selectedCustomer.original;
       setCompanyStoreName(customer.company_name || customer.shop_name || customer.customer_name || "");
-      
+
       // Parse address from JSON string if it exists
       let addressText = "";
       if (customer.company_address) {
         try {
-          const addr = typeof customer.company_address === 'string' 
-            ? JSON.parse(customer.company_address) 
+          const addr = typeof customer.company_address === 'string'
+            ? JSON.parse(customer.company_address)
             : customer.company_address;
           addressText = formatAddress(addr);
         } catch (e) {
-          addressText = typeof customer.company_address === 'string' 
-            ? customer.company_address 
+          addressText = typeof customer.company_address === 'string'
+            ? customer.company_address
             : "";
         }
       } else if (customer.shop_address) {
         try {
-          const addr = typeof customer.shop_address === 'string' 
-            ? JSON.parse(customer.shop_address) 
+          const addr = typeof customer.shop_address === 'string'
+            ? JSON.parse(customer.shop_address)
             : customer.shop_address;
           addressText = formatAddress(addr);
         } catch (e) {
-          addressText = typeof customer.shop_address === 'string' 
-            ? customer.shop_address 
+          addressText = typeof customer.shop_address === 'string'
+            ? customer.shop_address
             : "";
         }
       } else if (customer.address) {
         addressText = customer.address;
       }
-      
+
       setAddress(addressText);
       setContactPersonName(customer.contact_person || "");
       setContactPersonPhone(customer.phone_number || customer.contact_tel || "");
@@ -133,7 +154,7 @@ export default function CreateRepair() {
             const deviceLabel = deviceType
               ? `${deviceType.brand} ${deviceType.model}${device.serial_number ? ` (S/N: ${device.serial_number})` : ''}`
               : `Device ${device.device_id}${device.serial_number ? ` (S/N: ${device.serial_number})` : ''}`;
-            
+
             return {
               value: device.device_id,
               label: deviceLabel,
@@ -146,7 +167,7 @@ export default function CreateRepair() {
         const fetchCustomerDevices = async () => {
           const token = localStorage.getItem("token");
           if (!token) return;
-          
+
           try {
             const customerRes = await apiClient.getCustomer(token, customer.customer_id);
             if (customerRes.data?.Cust_Devices) {
@@ -158,7 +179,7 @@ export default function CreateRepair() {
                   const deviceLabel = deviceType
                     ? `${deviceType.brand} ${deviceType.model}${device.serial_number ? ` (S/N: ${device.serial_number})` : ''}`
                     : `Device ${device.device_id}${device.serial_number ? ` (S/N: ${device.serial_number})` : ''}`;
-                  
+
                   return {
                     value: device.device_id,
                     label: deviceLabel,
@@ -207,13 +228,13 @@ export default function CreateRepair() {
     if (selectedDevice?.original) {
       const device = selectedDevice.original;
       const deviceType = device.DeviceType;
-      
+
       // Set Product Name from DeviceType (brand + model)
-      const productName = deviceType 
+      const productName = deviceType
         ? `${deviceType.brand || ''} ${deviceType.model || ''}`.trim()
         : "";
       setProductName(productName);
-      
+
       // Set Serial Number
       setProductNumber(device.serial_number || "");
     } else {
@@ -225,15 +246,15 @@ export default function CreateRepair() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const selectedFiles = Array.from(e.target.files);
-      
+
       // Filter only image files (.jpeg, .jpg, .png)
       const imageFiles = selectedFiles.filter(file => {
         const fileName = file.name.toLowerCase();
         return fileName.endsWith('.jpeg') || fileName.endsWith('.jpg') || fileName.endsWith('.png');
       });
-      
+
       setFiles(imageFiles);
-      
+
       // Create preview URLs for images
       const previews = imageFiles.map(file => URL.createObjectURL(file));
       setImagePreviews(previews);
@@ -243,10 +264,10 @@ export default function CreateRepair() {
   const removeImage = (index: number) => {
     // Revoke the object URL to free memory
     URL.revokeObjectURL(imagePreviews[index]);
-    
+
     const newFiles = files.filter((_, i) => i !== index);
     const newPreviews = imagePreviews.filter((_, i) => i !== index);
-    
+
     setFiles(newFiles);
     setImagePreviews(newPreviews);
   };
@@ -260,6 +281,15 @@ export default function CreateRepair() {
 
   const addPart = () => {
     setParts([...parts, { part_number: "", description: "", quantity: 1 }]);
+  };
+
+  const addPartFromDropdown = (selectedPart: any) => {
+    const newPart = {
+      part_number: selectedPart.part_no,
+      description: selectedPart.description,
+      quantity: 1
+    };
+    setParts([...parts, newPart]);
   };
 
   const removePart = (index: number) => {
@@ -282,13 +312,13 @@ export default function CreateRepair() {
     setLoading(true);
     try {
       const formData = new FormData();
-      
+
       // Basic ticket info
       formData.append("subject", defectSymptoms || "Repair Request");
       formData.append("description", defectSymptoms);
       formData.append("customer_id", selectedCustomer.value);
       formData.append("priority", priority);
-      
+
       if (selectedDevice) {
         formData.append("device_id", selectedDevice.value);
       }
@@ -299,6 +329,11 @@ export default function CreateRepair() {
       formData.append("sent_by", sentBy);
       formData.append("received_by", receivedBy);
       formData.append("engineer_comment", engineerComment);
+
+      // Technician field
+      if (selectedTechnician) {
+        formData.append("technician_name", selectedTechnician.label);
+      }
 
       // Delivery fields
       if (dueDate) {
@@ -325,7 +360,7 @@ export default function CreateRepair() {
       if (!token) throw new Error("No token");
 
       const result = await apiClient.createRepairTicket(token, formData);
-      
+
       if (result.error) {
         throw new Error(result.error);
       }
@@ -341,10 +376,10 @@ export default function CreateRepair() {
       }
     } catch (error: any) {
       console.error(error);
-      toast({ 
-        title: "Error", 
-        description: error.message || "Failed to create repair ticket", 
-        variant: "destructive" 
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create repair ticket",
+        variant: "destructive"
       });
     } finally {
       setLoading(false);
@@ -556,6 +591,17 @@ export default function CreateRepair() {
                 <CardTitle className="text-lg">Parts <span className="text-red-500">*</span></CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>อุปกรณ์</Label>
+                  <Select
+                    options={partsList}
+                    onChange={addPartFromDropdown}
+                    placeholder="เลือกอุปกรณ์"
+                    isSearchable
+                    isClearable
+                  />
+                </div>
+
                 <div className="flex justify-between items-center">
                   <p className="text-sm text-gray-600">PART NO., DESCRIPTION, QUANTITY</p>
                   <Button type="button" variant="outline" size="sm" onClick={addPart}>
@@ -589,11 +635,11 @@ export default function CreateRepair() {
                       className="w-24"
                       min="1"
                     />
-                    <Button 
-                      type="button" 
-                      variant="ghost" 
-                      size="icon" 
-                      onClick={() => removePart(index)} 
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removePart(index)}
                       className="text-red-500"
                     >
                       ×
@@ -606,16 +652,21 @@ export default function CreateRepair() {
             {/* Engineer Report Section */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">ENGINEER REPORT</CardTitle>
+                <CardTitle className="text-lg">TECHNICAL REPORT</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label>ENGINEER</Label>
-                    <Input
-                      value={engineerName}
-                      onChange={(e) => setEngineerName(e.target.value)}
-                      placeholder="Engineer Name"
+                    <Label>TECHNICAL</Label>
+                    <Select
+                      value={selectedTechnician}
+                      onChange={setSelectedTechnician}
+                      options={technicalReports}
+                      placeholder="Select Technician"
+                      isSearchable={true}
+                      isClearable={true}
+                      className="react-select-container"
+                      classNamePrefix="react-select"
                     />
                   </div>
                   <div className="space-y-2">
@@ -628,22 +679,23 @@ export default function CreateRepair() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>PURCHASE DATE</Label>
-                  <Input
-                    type="date"
-                    value={purchaseDate}
-                    onChange={(e) => setPurchaseDate(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>CONTRACT DATE</Label>
-                  <Input
-                    type="date"
-                    value={contractDate}
-                    onChange={(e) => setContractDate(e.target.value)}
-                  />
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label>PURCHASE DATE</Label>
+                    <Input
+                      type="date"
+                      value={purchaseDate}
+                      onChange={(e) => setPurchaseDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CONTRACT DATE</Label>
+                    <Input
+                      type="date"
+                      value={contractDate}
+                      onChange={(e) => setContractDate(e.target.value)}
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -691,7 +743,7 @@ export default function CreateRepair() {
                   <span className="text-sm text-gray-500">
                     {files.length} file(s) selected (Only .jpeg, .jpg, .png allowed)
                   </span>
-                  
+
                   {/* Image Previews */}
                   {imagePreviews.length > 0 && (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">

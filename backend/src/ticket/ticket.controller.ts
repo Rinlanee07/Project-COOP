@@ -4,6 +4,7 @@ import { TicketService } from './ticket.service';
 import type {
   CreateTicketDto,
   UpdateTicketStatusDto,
+  UpdateTicketDto,
 } from './ticket.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -58,5 +59,19 @@ export class TicketController {
     const userRole = req.user.role; // JWT payload uses 'role' field
 
     return this.ticketService.updateTicketStatus(id, updateDto, userId, userRole);
+  }
+
+  @Patch(':id')
+  @UseInterceptors(FilesInterceptor('files'))
+  async updateTicket(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() updateDto: UpdateTicketDto,
+    @UploadedFiles() files: Array<Express.Multer.File>
+  ) {
+    const userId = req.user.sub;
+    const userRole = req.user.role;
+
+    return this.ticketService.updateTicket(id, updateDto, userId, userRole, files);
   }
 }

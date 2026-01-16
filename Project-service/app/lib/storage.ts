@@ -58,12 +58,11 @@ export class LocalStorageAdapter implements StorageAdapter {
 
     // Register with degradation utils if available
     setTimeout(() => {
-      try {
-        const { degradationUtils } = require('./preference-utils');
+      import('./preference-utils').then(({ degradationUtils }) => {
         degradationUtils.registerHealthCheck('localStorage', checkStorageHealth, 60000);
-      } catch (error) {
+      }).catch((error) => {
         console.warn('Could not register storage health check:', error);
-      }
+      });
     }, 1000);
   }
 
@@ -194,9 +193,7 @@ export class LocalStorageAdapter implements StorageAdapter {
   private notifyStorageIssue(type: 'quota' | 'fallback'): void {
     // Import errorHandlers dynamically to avoid circular dependency
     setTimeout(() => {
-      try {
-        const { errorHandlers } = require('./preference-utils');
-        
+      import('./preference-utils').then(({ errorHandlers }) => {
         if (type === 'quota') {
           errorHandlers.notificationManager.addNotification({
             type: 'warning',
@@ -215,9 +212,9 @@ export class LocalStorageAdapter implements StorageAdapter {
             persistent: true
           });
         }
-      } catch (error) {
+      }).catch((error) => {
         console.warn('Could not show storage notification:', error);
-      }
+      });
     }, 100);
   }
 

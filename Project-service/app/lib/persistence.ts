@@ -3,7 +3,7 @@
  * Handles saving and loading user preferences with validation and error handling
  */
 
-import { StorageAdapter, createStorageAdapter } from './storage';
+import { StorageAdapter, LocalStorageAdapter, createStorageAdapter } from './storage';
 
 // Type definitions
 export type ThemeMode = 'light' | 'dark' | 'system';

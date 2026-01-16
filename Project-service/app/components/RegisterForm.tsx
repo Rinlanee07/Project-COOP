@@ -31,7 +31,8 @@ export default function RegisterForm({
         user_role: userType === 'officer' ? 'ADMIN' : 'MEMBER'
       };
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api'}/auth/register`, {
+      const BACKEND_URL = 'http://localhost:3001';
+      const res = await fetch(`${BACKEND_URL}/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

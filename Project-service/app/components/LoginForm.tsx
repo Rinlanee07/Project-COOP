@@ -21,7 +21,9 @@ export default function LoginForm({
     setError(null);
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api'}/auth/login`, {
+      // Hardcode backend URL for now since env var not loading properly
+      const BACKEND_URL = 'http://localhost:3001';
+      const res = await fetch(`${BACKEND_URL}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

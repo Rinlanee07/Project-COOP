@@ -16,6 +16,7 @@ export class CreateTicketDto {
   received_by?: string;
   engineer_comment?: string;
   purchase_date?: string;
+  technician_name?: string; // Add technician name field
   parts?: Array<{
     part_number?: string;
     description: string;
@@ -26,6 +27,24 @@ export class CreateTicketDto {
 export interface UpdateTicketStatusDto {
   status: string;
   update_detail?: string;
+}
+
+export class UpdateTicketDto {
+  description?: string;
+  priority?: string;
+  accessories?: string;
+  remark?: string;
+  sent_by?: string;
+  received_by?: string;
+  engineer_comment?: string;
+  technician_name?: string;
+  purchase_date?: string;
+  is_chargeable?: boolean;
+  parts?: Array<{
+    part_number?: string;
+    description: string;
+    quantity: number;
+  }>;
 }
 
 @Injectable()
@@ -152,12 +171,43 @@ export class TicketService {
   // ... inside TicketService ...
 
   async createTicket(createDto: CreateTicketDto, userId: string, userRole: string, files?: Array<Express.Multer.File>) {
-    // Generate ticket ID
+    // Generate ticket ID (Internal)
     const ticketId = 'T' + Date.now().toString();
+
+    // Generate Display ID: T-YYYY-XXXXX using ticket_running_no
+    const year = new Date().getFullYear().toString();
+    // Find last ticket of the current year
+    const lastTicket = await this.prisma.ticket.findFirst({
+      where: {
+        ticket_running_no: {
+          startsWith: `T-${year}-`
+        }
+      },
+      orderBy: {
+        ticket_running_no: 'desc'
+      },
+      select: {
+        ticket_running_no: true
+      }
+    });
+
+    let sequence = 1;
+    if (lastTicket && lastTicket.ticket_running_no) {
+      const parts = lastTicket.ticket_running_no.split('-');
+      if (parts.length === 3) {
+        const lastSeq = parseInt(parts[2]);
+        if (!isNaN(lastSeq)) {
+          sequence = lastSeq + 1;
+        }
+      }
+    }
+
+    const runningNo = `T-${year}-${sequence.toString().padStart(5, '0')}`;
 
     const ticket = await this.prisma.ticket.create({
       data: {
         ticket_id: ticketId,
+        ticket_running_no: runningNo,
         subject: createDto.subject,
         description: createDto.description,
         priority: createDto.priority || 'Medium',
@@ -170,6 +220,7 @@ export class TicketService {
         sent_by: createDto.sent_by,
         received_by: createDto.received_by,
         engineer_comment: createDto.engineer_comment,
+        technician_name: createDto.technician_name,
         purchase_date: createDto.purchase_date ? new Date(createDto.purchase_date) : null,
       },
       include: {
@@ -292,5 +343,132 @@ export class TicketService {
     });
 
     return updatedTicket;
+  }
+
+  async updateTicket(id: string, updateDto: UpdateTicketDto, userId: string, userRole: string, files?: Array<Express.Multer.File>) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { ticket_id: id }
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    // Only ADMIN or assigned technician can update ticket
+    if (userRole !== 'ADMIN' && ticket.assigned_to !== userId && ticket.reporter_id !== userId) {
+      throw new UnauthorizedException('You do not have permission to update this ticket');
+    }
+
+    // Prepare update data
+    const updateData: any = {};
+
+    if (updateDto.description !== undefined) updateData.description = updateDto.description;
+    if (updateDto.priority !== undefined) updateData.priority = updateDto.priority;
+    if (updateDto.accessories !== undefined) updateData.accessories = updateDto.accessories;
+    if (updateDto.remark !== undefined) updateData.remark = updateDto.remark;
+    if (updateDto.sent_by !== undefined) updateData.sent_by = updateDto.sent_by;
+    if (updateDto.received_by !== undefined) updateData.received_by = updateDto.received_by;
+    if (updateDto.engineer_comment !== undefined) updateData.engineer_comment = updateDto.engineer_comment;
+    if (updateDto.technician_name !== undefined) updateData.technician_name = updateDto.technician_name;
+    if (updateDto.is_chargeable !== undefined) updateData.is_chargeable = updateDto.is_chargeable;
+    if (updateDto.purchase_date !== undefined) {
+      updateData.purchase_date = updateDto.purchase_date ? new Date(updateDto.purchase_date) : null;
+    }
+
+    // Update ticket
+    const updatedTicket = await this.prisma.ticket.update({
+      where: { ticket_id: id },
+      data: updateData,
+      include: {
+        Customer: true,
+        Device: {
+          include: {
+            DeviceType: true
+          }
+        },
+        TicketParts: true,
+        Attachments: true
+      }
+    });
+
+    // Update parts if provided
+    if (updateDto.parts !== undefined) {
+      // Delete existing parts
+      await this.prisma.ticketPart.deleteMany({
+        where: { ticket_id: id }
+      });
+
+      // Create new parts
+      if (Array.isArray(updateDto.parts) && updateDto.parts.length > 0) {
+        await this.prisma.ticketPart.createMany({
+          data: updateDto.parts.map(part => ({
+            ticket_id: id,
+            part_number: part.part_number,
+            description: part.description,
+            quantity: Number(part.quantity) || 1
+          }))
+        });
+      }
+    }
+
+    // Create update record
+    await this.prisma.ticket_Update.create({
+      data: {
+        ticket_id: id,
+        update_type: 'UPDATE',
+        update_detail: 'Ticket details updated',
+        updated_by: userId
+      }
+    });
+
+    // Handle File Uploads (new images)
+    if (files && files.length > 0) {
+      for (const file of files) {
+        try {
+          const uploadResult = await this.uploadService.uploadFile(file);
+          await this.prisma.attachment.create({
+            data: {
+              ticket_id: id,
+              file_name: uploadResult.fileName,
+              file_url: uploadResult.url,
+              file_type: file.mimetype,
+              uploaded_by: userId
+            }
+          });
+        } catch (error) {
+          console.error(`Failed to upload attachment for ticket ${id}`, error);
+        }
+      }
+    }
+
+    // Return updated ticket with all relations
+    return this.prisma.ticket.findUnique({
+      where: { ticket_id: id },
+      include: {
+        Customer: true,
+        Device: { include: { DeviceType: true } },
+        TicketParts: true,
+        Attachments: true,
+        assignee: {
+          select: {
+            username: true,
+            email: true
+          }
+        },
+        RepairLogs: {
+          include: {
+            Technician: {
+              select: {
+                username: true,
+                email: true
+              }
+            }
+          },
+          orderBy: {
+            repair_date: 'desc'
+          }
+        }
+      }
+    });
   }
 }

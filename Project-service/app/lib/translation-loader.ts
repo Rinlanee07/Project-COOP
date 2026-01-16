@@ -236,41 +236,6 @@ export class LazyTranslationLoader {
   }
 
   /**
-   * Load a translation chunk asynchronously
-   */
-  async loadChunk(chunkName: string): Promise<void> {
-    const chunkKey = chunkName;
-    
-    if (this.loadedChunks.has(chunkKey)) {
-      return;
-    }
-
-    // Check if already loading
-    if (this.loadingPromises.has(chunkKey)) {
-      return this.loadingPromises.get(chunkKey);
-    }
-
-    const loadingPromise = performanceUtils.measureOperation(async () => {
-      // Simulate async loading (in real app, this might be a network request)
-      await new Promise(resolve => setTimeout(resolve, 1));
-      
-      // Load for both languages
-      for (const language of ['en', 'th'] as SupportedLanguage[]) {
-        const chunk = translationChunks[language]?.[chunkName];
-        if (chunk) {
-          Object.assign(this.translations[language], chunk);
-        }
-      }
-      
-      this.loadedChunks.add(chunkKey);
-      this.loadingPromises.delete(chunkKey);
-    }, `load-chunk-${chunkName}`);
-
-    this.loadingPromises.set(chunkKey, loadingPromise);
-    return loadingPromise;
-  }
-
-  /**
    * Load multiple chunks at once
    */
   async loadChunks(chunkNames: string[]): Promise<void> {

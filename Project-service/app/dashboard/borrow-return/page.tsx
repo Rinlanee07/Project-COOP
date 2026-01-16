@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
-import { apiClient } from "@/lib/api-client";
+import { ApiClient } from "@/lib/api-client";
+const apiClient = new ApiClient(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002');
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
 
